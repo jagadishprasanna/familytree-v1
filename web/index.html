@@ -71,7 +71,7 @@
 </header>
 <main>
   <svg id="svg"><g id="vp"></g></svg>
-  <div class="hint">Drag to pan · scroll to zoom · click a card for details · double-click to re-center the tree</div>
+  <div class="hint"><b id="src"></b> · Drag to pan · scroll to zoom · click a card for details · double-click to re-center the tree</div>
   <aside id="panel"></aside>
 </main>
 <datalist id="plist"></datalist>
@@ -295,6 +295,7 @@ $('#depth').onchange=e=>{depth=+e.target.value;render();};
 $('#fit').onclick=fitView; addEventListener('resize',()=>fitView());
 $('#panel').addEventListener('click',e=>e.stopPropagation());
 (async()=>{
+  try{const s=await api('/api/status'); $('#src').textContent=s.source==='google-sheet'?'Data: Google Sheet':'Data: text file (not Google Sheet)';}catch(e){}
   await loadPeople(); if(!people.length) return firstPerson();
   const [v,id]=location.hash.slice(1).split('/');
   if(v==='descendants'){view='descendants';$('#v-ped').classList.remove('on');$('#v-desc').classList.add('on');}
