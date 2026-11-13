@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Family Tree</title>
+<style>
+  :root{--bg:#f3f0e8;--ink:#22302a;--muted:#6c7a72;--green:#2e6a4e;--green2:#245640;
+        --m:#5a8fbf;--f:#c97a8f;--o:#8f9a94;--line:#9fb0a6;--card:#fff;--sel:#f2b134}
+  *{box-sizing:border-box}
+  html,body{height:100%;margin:0;font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:var(--ink);background:var(--bg)}
+  header{height:56px;background:var(--green);color:#fff;display:flex;align-items:center;gap:14px;padding:0 16px}
+  header h1{font-size:18px;margin:0;display:flex;align-items:center;gap:8px;font-weight:600;white-space:nowrap}
+  header input,header select,header button{height:34px;border-radius:6px;border:0;padding:0 10px;font:inherit}
+  header input{width:260px}
+  header button,header select{background:#fff;color:var(--ink);cursor:pointer}
+  .seg{display:flex;border-radius:6px;overflow:hidden}
+  .seg button{border-radius:0;background:#3f8062;color:#fff}
+  .seg button.on{background:#fff;color:var(--green2);font-weight:600}
+  .grow{flex:1}
+  main{height:calc(100% - 56px);display:flex;position:relative}
+  #svg{flex:1;width:100%;height:100%;cursor:grab;background:
+      radial-gradient(circle at 1px 1px,#d9d4c7 1px,transparent 0) 0 0/24px 24px}
+  #svg:active{cursor:grabbing}
+  .edge{fill:none;stroke:var(--line);stroke-width:2}
+  .marry{stroke:#c9a24a;stroke-width:3}
+  .card rect:first-child{fill:var(--card);stroke:#d6dcd8;stroke-width:1.5;filter:drop-shadow(0 1px 2px rgba(0,0,0,.12))}
+  .card{cursor:pointer}
+  .card:hover rect:first-child{stroke:var(--green)}
+  .card.M .bar{fill:var(--m)} .card.F .bar{fill:var(--f)} .card.O .bar{fill:var(--o)}
+  .card .av{fill:#e9eeeb} .card .sil{fill:#aebab3}
+  .card.M .av{fill:#e3eef8} .card.F .av{fill:#f8e6ec}
+  .card.focus rect:first-child{stroke:var(--green);stroke-width:3}
+  .card.sel rect:first-child{stroke:var(--sel);stroke-width:3.5}
+  .nm{font-size:14px;font-weight:600;fill:var(--ink)} .yr{font-size:12px;fill:var(--muted)}
+  .ph rect{fill:transparent;stroke:#b4c0b9;stroke-width:1.5;stroke-dasharray:6 5}
+  .ph text{fill:var(--muted);font-size:13px} .ph{cursor:pointer} .ph:hover rect{stroke:var(--green)}
+  aside{width:340px;background:#fff;border-left:1px solid #ddd;overflow:auto;padding:18px;display:none}
+  aside.open{display:block}
+  aside h2{margin:0 0 2px;font-size:20px}
+  .sub{color:var(--muted);margin-bottom:10px}
+  .rel{background:#eef5f1;border-radius:8px;padding:8px 10px;margin:10px 0;color:var(--green2)}
+  aside h3{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:16px 0 6px}
+  aside a{color:var(--green2);cursor:pointer;text-decoration:none;display:block;padding:3px 0}
+  aside a:hover{text-decoration:underline} .none{color:#aab4ae}
+  .btn{background:var(--green);color:#fff;border:0;border-radius:6px;padding:7px 12px;cursor:pointer;font:inherit}
+  .btn.ghost{background:#eef5f1;color:var(--green2)}
+  .row{display:flex;gap:6px;flex-wrap:wrap}
+  form{background:#f7f9f8;border:1px solid #e1e8e4;border-radius:8px;padding:10px;margin-top:10px;display:grid;gap:7px}
+  form input,form select{width:100%;padding:6px 8px;border:1px solid #cfd8d3;border-radius:6px;font:inherit}
+  form label{font-size:12px;color:var(--muted)} .chk{display:flex;gap:6px;align-items:center}
+  .chk input{width:auto}
+  #toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#8b2e2e;color:#fff;padding:9px 16px;border-radius:8px;display:none;z-index:9}
+  .hint{position:absolute;left:12px;bottom:10px;color:var(--muted);font-size:12px;background:rgba(255,255,255,.8);padding:4px 8px;border-radius:6px}
+  @media(max-width:760px){aside{position:absolute;right:0;top:0;bottom:0;width:88%;box-shadow:-4px 0 16px rgba(0,0,0,.2)}
+    header input{width:130px} header .hide-sm{display:none}}
+</style>
+</head>
+<body>
+<header>
+  <h1><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><path d="M12 21V9M12 13c-4 0-6-2-6-6 4 0 6 2 6 6zM12 15c3 0 5-2 5-5-3 0-5 2-5 5z"/></svg>Family Tree</h1>
+  <input id="search" list="plist" placeholder="Search a person…" autocomplete="off">
+  <div class="seg">
+    <button id="v-ped" class="on">Ancestors</button>
+    <button id="v-desc">Descendants</button>
+  </div>
+  <select id="depth" title="Generations"></select>
+  <button id="fit">Fit</button>
+  <div class="grow"></div>
+  <span class="hide-sm" id="focusname"></span>
+</header>
+<main>
+  <svg id="svg"><g id="vp"></g></svg>
+  <div class="hint">Drag to pan · scroll to zoom · click a card for details · double-click to re-center the tree</div>
+  <aside id="panel"></aside>
+</main>
+<datalist id="plist"></datalist>
+<div id="toast"></div>
+
+<script>
+const CW=190, CH=66, HG=28, VG=60, SG=20, VGAP=14, COLGAP=70;
+let people=[], focus=null, selected=null, view='pedigree', depth=4, T={x:0,y:0,k:1};
+const $=s=>document.querySelector(s), NS='http://www.w3.org/2000/svg';
+const svg=$('#svg'), vp=$('#vp');
+
+function S(tag,attrs={},parent){const e=document.createElementNS(NS,tag);
+  for(const k in attrs)e.setAttribute(k,attrs[k]); if(parent)parent.appendChild(e); return e;}
+async function api(path,body){
+  const r=await fetch(path, body?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:undefined);
+  const j=await r.json(); if(!r.ok) throw new Error(j.error||r.statusText); return j;}
+function toast(m){const t=$('#toast');t.textContent=m;t.style.display='block';clearTimeout(toast.h);toast.h=setTimeout(()=>t.style.display='none',3500);}
+const yr=s=>((s||'').match(/\d{4}/)||[''])[0];
+function years(p){const b=yr(p.birth),d=yr(p.death); if(!b&&!d)return ''; return `${b||'?'} – ${d||(b?'Living':'')}`;}
+const trunc=(s,n)=>s.length>n?s.slice(0,n-1)+'…':s;
+const byId=id=>people.find(p=>p.id===id);
+
+/* ---------- cards ---------- */
+function card(g,p,x,y){
+  const a=S('g',{class:`card ${p.gender||'O'} ${p.id===focus?'focus':''} ${p.id===selected?'sel':''}`,
+                 transform:`translate(${x},${y})`,'data-id':p.id},g);
+  S('rect',{width:CW,height:CH,rx:10},a);
+  S('rect',{class:'bar',width:7,height:CH,rx:3},a);
+  S('circle',{cx:36,cy:CH/2,r:20,class:'av'},a);
+  S('circle',{cx:36,cy:CH/2-5,r:6.5,class:'sil'},a);
+  S('path',{d:`M23 ${CH/2+15} q13 -22 26 0z`,class:'sil'},a);
+  S('text',{x:64,y:28,class:'nm'},a).textContent=trunc(p.name,17);
+  S('text',{x:64,y:47,class:'yr'},a).textContent=years(p);
+  S('title',{},a).textContent=p.name;
+  a.addEventListener('click',e=>{e.stopPropagation();select(p.id)});
+  a.addEventListener('dblclick',e=>{e.stopPropagation();setFocus(p.id)});
+}
+function placeholder(g,x,y,childId){
+  const a=S('g',{class:'ph',transform:`translate(${x},${y})`},g);
+  S('rect',{width:CW,height:CH,rx:10},a);
+  const t=S('text',{x:CW/2,y:CH/2+5,'text-anchor':'middle'},a); t.textContent='+ Add parent';
+  a.addEventListener('click',async e=>{e.stopPropagation();await select(childId);openForm('parent');});
+}
+const edge=(g,d,cls='edge')=>S('path',{d,class:cls},g);
+
+/* ---------- pedigree (ancestors, left → right) ---------- */
+function slots(n){
+  const ps=n.parents; if(ps.length>=2) return ps.slice(0,2);
+  const ph=()=>({placeholder:true,child:n.person.id,parents:[]});
+  if(!ps.length) return [ph(),ph()];
+  return ps[0].person.gender==='F'?[ph(),ps[0]]:[ps[0],ph()];
+}
+function layoutPed(n,gen,ctx){
+  const kids=(!n.placeholder&&gen<depth)?slots(n).map(k=>layoutPed(k,gen+1,ctx)):[];
+  n.y=kids.length?(kids[0].y+kids[kids.length-1].y)/2:ctx.next++*(CH+VGAP);
+  n.x=gen*(CW+COLGAP); ctx.nodes.push(n); kids.forEach(k=>ctx.edges.push([n,k])); return n;
+}
+function drawPedigree(t,eg,cg){
+  const ctx={next:0,nodes:[],edges:[]}; layoutPed(t,0,ctx);
+  ctx.edges.forEach(([a,b])=>{const x1=a.x+CW,y1=a.y+CH/2,x2=b.x,y2=b.y+CH/2,mx=x1+COLGAP/2;
+    edge(eg,`M${x1} ${y1}H${mx}V${y2}H${x2}`)});
+  ctx.nodes.forEach(n=>n.placeholder?placeholder(cg,n.x,n.y,n.child):card(cg,n.person,n.x,n.y));
+}
+
+/* ---------- descendants (top → bottom, couples side by side) ---------- */
+function measure(n){
+  const c=1+n.spouses.length; n.unitW=c*CW+(c-1)*SG; n.children.forEach(measure);
+  const kw=n.children.reduce((s,k)=>s+k.w,0)+HG*Math.max(0,n.children.length-1);
+  n.kw=kw; n.w=Math.max(n.unitW,kw);
+}
+function place(n,x0,gen,out){
+  n.y=gen*(CH+VG); n.left=x0+(n.w-n.unitW)/2; out.push(n);
+  let x=x0+(n.w-n.kw)/2; n.children.forEach(k=>{place(k,x,gen+1,out); x+=k.w+HG;});
+}
+function drawDescendants(t,eg,cg){
+  measure(t); const nodes=[]; place(t,0,0,nodes);
+  nodes.forEach(n=>{
+    const people=[n.person,...n.spouses.map(s=>s.person)];
+    people.forEach((p,i)=>card(cg,p,n.left+i*(CW+SG),n.y));
+    n.spouses.forEach((s,i)=>{const x=n.left+(i+1)*CW+i*SG; // marriage bar in gap
+      edge(eg,`M${x} ${n.y+CH/2}H${x+SG}`,'edge marry');});
+    n.ax=n.spouses.length?n.left+CW+SG/2:n.left+CW/2;
+    n.ay=n.spouses.length?n.y+CH/2:n.y+CH;
+    n.children.forEach(k=>{const kx=k.left+CW/2,ky=k.y,my=n.y+CH+VG/2;
+      edge(eg,`M${n.ax} ${n.ay}V${my}H${kx}V${ky}`);});
+  });
+}
+
+/* ---------- render / view ---------- */
+async function render(fit=true){
+  vp.innerHTML=''; if(!focus) return;
+  const eg=S('g',{},vp), cg=S('g',{},vp);
+  try{
+    if(view==='pedigree') drawPedigree(await api(`/api/tree/pedigree/${focus}?depth=${depth}`),eg,cg);
+    else drawDescendants(await api(`/api/tree/descendants/${focus}?depth=${depth}`),eg,cg);
+  }catch(e){toast(e.message);}
+  $('#focusname').textContent='Tree of '+(byId(focus)?.name||'');
+  location.hash=`${view}/${focus}`;
+  if(fit) fitView();
+}
+function applyT(){vp.setAttribute('transform',`translate(${T.x},${T.y}) scale(${T.k})`);}
+function fitView(){
+  const b=vp.getBBox(), r=svg.getBoundingClientRect(); if(!b.width) return;
+  const pad=40, k=Math.min(1.1,(r.width-pad*2)/b.width,(r.height-pad*2)/b.height);
+  T.k=k; T.x=(r.width-b.width*k)/2-b.x*k; T.y=(r.height-b.height*k)/2-b.y*k; applyT();
+}
+async function setFocus(id){focus=id; await render(); await select(id,true);}
+function setView(v){view=v;$('#v-ped').classList.toggle('on',v==='pedigree');
+  $('#v-desc').classList.toggle('on',v==='descendants'); depth=v==='pedigree'?+$('#depth').value:+$('#depth').value; render();}
+
+/* ---------- pan & zoom ---------- */
+let drag=null, moved=false;
+svg.addEventListener('pointerdown',e=>{moved=false;drag={x:e.clientX,y:e.clientY,tx:T.x,ty:T.y};});
+addEventListener('pointermove',e=>{if(!drag)return;const dx=e.clientX-drag.x,dy=e.clientY-drag.y;
+  if(Math.abs(dx)+Math.abs(dy)>3)moved=true; T.x=drag.tx+dx;T.y=drag.ty+dy;applyT();});
+addEventListener('pointerup',()=>{drag=null;});
+svg.addEventListener('wheel',e=>{e.preventDefault();const r=svg.getBoundingClientRect(),mx=e.clientX-r.left,my=e.clientY-r.top;
+  const k2=Math.min(3,Math.max(.15,T.k*(e.deltaY<0?1.1:.9)));
+  T.x=mx-(mx-T.x)*k2/T.k;T.y=my-(my-T.y)*k2/T.k;T.k=k2;applyT();},{passive:false});
+svg.addEventListener('click',()=>{if(moved)return; closePanel();});
+
+/* ---------- side panel ---------- */
+function closePanel(){selected=null;$('#panel').classList.remove('open');
+  document.querySelectorAll('.card.sel').forEach(c=>c.classList.remove('sel'));}
+const links=(arr,fmt=p=>p.name)=>arr.length?arr.map(p=>`<a data-id="${p.id}">${esc(fmt(p))} <span class="none">${esc(years(p))}</span></a>`).join(''):'<span class="none">None recorded</span>';
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+async function select(id,keepScroll){
+  selected=id;
+  document.querySelectorAll('.card').forEach(c=>c.classList.toggle('sel',c.dataset.id===id));
+  let p; try{p=await api(`/api/person/${id}`);}catch(e){return toast(e.message);}
+  let rel=''; if(focus&&focus!==id){try{rel=(await api(`/api/relationship?a=${focus}&b=${id}`)).text;}catch(e){}}
+  const g={M:'Male',F:'Female',O:'Other'}[p.gender]||'';
+  const el=$('#panel');
+  el.innerHTML=`
+    <h2>${esc(p.name)}</h2>
+    <div class="sub">${esc([g,years(p)].filter(Boolean).join(' · '))} <span class="none">· ${p.id}</span></div>
+    ${rel?`<div class="rel">${esc(rel)}</div>`:''}
+    <div class="row">
+      <button class="btn" data-act="focus">View tree</button>
+      <button class="btn ghost" data-act="parent">+ Parent</button>
+      <button class="btn ghost" data-act="spouse">+ Spouse</button>
+      <button class="btn ghost" data-act="child">+ Child</button>
+    </div>
+    <div id="formbox"></div>
+    <h3>Parents</h3>${links(p.parents)}
+    <h3>Spouses</h3>${links(p.spouses,s=>s.name+(s.current?'':' (former)'))}
+    <h3>Children</h3>${links(p.children)}
+    <h3>Siblings</h3>${links(p.siblings,s=>s.name+(s.type==='half'?' (half)':''))}`;
+  el.classList.add('open'); el._p=p;
+  el.querySelectorAll('a[data-id]').forEach(a=>a.onclick=()=>select(a.dataset.id));
+  el.querySelectorAll('[data-act]').forEach(b=>b.onclick=()=>b.dataset.act==='focus'?setFocus(id):openForm(b.dataset.act));
+}
+function openForm(kind){
+  const p=$('#panel')._p; if(!p) return;
+  if(kind==='parent'&&p.parents.length>=2) return toast(`${p.name} already has two parents`);
+  const cur=p.spouses.filter(s=>s.current);
+  const label={parent:'Add parent',spouse:'Add husband / wife',child:'Add child'}[kind];
+  $('#formbox').innerHTML=`<form id="f"><b>${label}</b>
+    <label>Link an existing person (optional)</label>
+    <input name="existing" list="plist" placeholder="Search name…" autocomplete="off">
+    <label>…or create a new person</label>
+    <input name="name" placeholder="Full name">
+    <select name="gender"><option value="">Gender</option><option value="M">Male</option><option value="F">Female</option><option value="O">Other</option></select>
+    <input name="birth" placeholder="Birth (e.g. 1950)"><input name="death" placeholder="Death (optional)">
+    ${kind==='spouse'?'<input name="start" placeholder="Marriage year (optional)">':''}
+    ${kind==='child'&&cur.length===1?`<label class="chk"><input type="checkbox" name="other" checked> Also a child of ${esc(cur[0].name)}</label>`:''}
+    <div class="row"><button class="btn" type="submit">Save</button><button class="btn ghost" type="button" id="cancel">Cancel</button></div></form>`;
+  $('#cancel').onclick=()=>$('#formbox').innerHTML='';
+  $('#f').onsubmit=async e=>{e.preventDefault(); const f=Object.fromEntries(new FormData(e.target));
+    try{
+      let id=(f.existing.match(/\[(\w+)\]\s*$/)||[])[1];
+      if(!id){ if(!f.name.trim()) throw new Error('Enter a name or pick an existing person');
+        id=(await api('/api/person',{name:f.name,gender:f.gender,birth:f.birth,death:f.death})).id; }
+      if(kind==='parent') await api('/api/parent',{parent_id:id,child_id:p.id});
+      if(kind==='child'){ await api('/api/parent',{parent_id:p.id,child_id:id});
+        if(f.other&&cur[0]) await api('/api/parent',{parent_id:cur[0].id,child_id:id}); }
+      if(kind==='spouse') await api('/api/marriage',{a:p.id,b:id,start:f.start||''});
+      await loadPeople(); await render(false); await select(p.id);
+    }catch(err){toast(err.message); loadPeople();}
+  };
+}
+
+/* ---------- boot ---------- */
+async function loadPeople(){
+  people=await api('/api/people');
+  $('#plist').innerHTML=people.map(p=>`<option value="${esc(p.name)} [${p.id}]">`).join('');
+}
+$('#search').addEventListener('change',e=>{const id=(e.target.value.match(/\[(\w+)\]\s*$/)||[])[1]
+  ||people.find(p=>p.name.toLowerCase()===e.target.value.trim().toLowerCase())?.id;
+  if(id){setFocus(id);e.target.value='';}});
+$('#v-ped').onclick=()=>setView('pedigree'); $('#v-desc').onclick=()=>setView('descendants');
+$('#depth').innerHTML=[2,3,4,5,6,8].map(n=>`<option value="${n}" ${n===4?'selected':''}>${n} generations</option>`).join('');
+$('#depth').onchange=e=>{depth=+e.target.value;render();};
+$('#fit').onclick=fitView; addEventListener('resize',()=>fitView());
+$('#panel').addEventListener('click',e=>e.stopPropagation());
+(async()=>{
+  await loadPeople(); if(!people.length) return toast('No people yet - add some to family.txt');
+  const [v,id]=location.hash.slice(1).split('/');
+  if(v==='descendants'){view='descendants';$('#v-ped').classList.remove('on');$('#v-desc').classList.add('on');}
+  focus=byId(id)?id:people[0].id; depth=+$('#depth').value; await render();
+})();
+</script>
+</body>
+</html>

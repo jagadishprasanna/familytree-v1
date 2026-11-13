@@ -1,0 +1,34 @@
+# Sample family data - edit freely; the server reloads on change.
+# PERSON  | id | name | gender | birth | death
+# MARRIED | id | id | start | end
+# PARENT  | parent_id | child_id
+
+PERSON | P1 | Robert Miller | M | 1925 | 2001
+PERSON | P2 | Eleanor Miller | F | 1928 | 2010
+PERSON | P3 | David Miller | M | 1952 |
+PERSON | P4 | Susan Clark | F | 1954 |
+PERSON | P5 | Linda Miller | F | 1955 |
+PERSON | P6 | Mark Evans | M | 1953 |
+PERSON | P7 | Emily Miller | F | 1980 |
+PERSON | P8 | James Miller | M | 1983 |
+PERSON | P9 | Olivia Evans | F | 1982 |
+PERSON | P10 | Noah Miller | M | 2010 |
+PERSON | P11 | Rachel Green | F | 1984 |
+
+MARRIED | P1 | P2 | 1950 |
+MARRIED | P3 | P4 | 1978 |
+MARRIED | P5 | P6 | 1979 |
+MARRIED | P8 | P11 | 2008 |
+
+PARENT | P1 | P3
+PARENT | P2 | P3
+PARENT | P1 | P5
+PARENT | P2 | P5
+PARENT | P3 | P7
+PARENT | P4 | P7
+PARENT | P3 | P8
+PARENT | P4 | P8
+PARENT | P5 | P9
+PARENT | P6 | P9
+PARENT | P8 | P10
+PARENT | P11 | P10
