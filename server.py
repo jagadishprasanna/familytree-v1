@@ -1,25 +1,22 @@
 """MCP server exposing a text-file family tree to Claude.
 
-Run (stdio):   python server.py [path/to/family.txt]
-Env override:  FAMILY_FILE=/path/to/family.txt
+Run (stdio):   python server.py [path/to/family.txt | gsheet:<sheet-id>]
+Env:           GOOGLE_SHEET_ID + GOOGLE_SERVICE_ACCOUNT_JSON (or _FILE) -> Google Sheet
+               FAMILY_FILE=/path/to/family.txt                          -> text file
 """
 from __future__ import annotations
 
-import os
 import sys
-from pathlib import Path
 
 try:  # mcp >= 2
     from mcp.server.mcpserver import MCPServer as FastMCP
 except ImportError:  # mcp 1.x
     from mcp.server.fastmcp import FastMCP
 
-from family_store import FamilyStore, to_dict
+from family_store import open_store, to_dict
 
-DEFAULT = Path(__file__).with_name("family.txt")
-DATA_FILE = sys.argv[1] if len(sys.argv) > 1 else os.environ.get("FAMILY_FILE", str(DEFAULT))
-
-store = FamilyStore(DATA_FILE)
+# arg: path to family.txt, or "gsheet:<id>"; default: GOOGLE_SHEET_ID env, else FAMILY_FILE/family.txt
+store = open_store(sys.argv[1] if len(sys.argv) > 1 else None)
 mcp = FastMCP("family-tree")
 
 
@@ -116,6 +113,13 @@ def add_person(name: str, gender: str = "", birth: str = "", death: str = "",
     """Add a person. gender: M/F/O. Dates are free text (e.g. 1950 or 1950-03-01).
     person_id is auto-generated (P1, P2, ...) when omitted."""
     return to_dict(store.add_person(name, gender, birth, death, person_id))
+
+
+@mcp.tool()
+def update_person(person_id: str, name: str | None = None, gender: str | None = None,
+                  birth: str | None = None, death: str | None = None) -> dict:
+    """Edit a person's details. Omit a field to keep it; pass "" to clear gender/birth/death."""
+    return to_dict(store.update_person(person_id, name, gender, birth, death))
 
 
 @mcp.tool()

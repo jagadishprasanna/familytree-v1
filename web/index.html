@@ -211,6 +211,7 @@ async function select(id,keepScroll){
     ${rel?`<div class="rel">${esc(rel)}</div>`:''}
     <div class="row">
       <button class="btn" data-act="focus">View tree</button>
+      <button class="btn ghost" data-act="edit">Edit</button>
       <button class="btn ghost" data-act="parent">+ Parent</button>
       <button class="btn ghost" data-act="spouse">+ Spouse</button>
       <button class="btn ghost" data-act="child">+ Child</button>
@@ -224,8 +225,24 @@ async function select(id,keepScroll){
   el.querySelectorAll('a[data-id]').forEach(a=>a.onclick=()=>select(a.dataset.id));
   el.querySelectorAll('[data-act]').forEach(b=>b.onclick=()=>b.dataset.act==='focus'?setFocus(id):openForm(b.dataset.act));
 }
+function openEdit(p){
+  const opt=(v,l)=>`<option value="${v}" ${p.gender===v?'selected':''}>${l}</option>`;
+  $('#formbox').innerHTML=`<form id="f"><b>Edit person</b>
+    <label>Name</label><input name="name" value="${esc(p.name)}" required>
+    <label>Gender</label><select name="gender">${opt('','Not set')}${opt('M','Male')}${opt('F','Female')}${opt('O','Other')}</select>
+    <label>Birth</label><input name="birth" value="${esc(p.birth)}" placeholder="e.g. 1950 or 1950-03-01">
+    <label>Death</label><input name="death" value="${esc(p.death)}" placeholder="blank if living">
+    <div class="row"><button class="btn" type="submit">Save</button><button class="btn ghost" type="button" id="cancel">Cancel</button></div></form>`;
+  $('#cancel').onclick=()=>$('#formbox').innerHTML='';
+  $('#f').onsubmit=async e=>{e.preventDefault(); const f=Object.fromEntries(new FormData(e.target));
+    try{ await api(`/api/person/${p.id}`,{name:f.name,gender:f.gender,birth:f.birth,death:f.death});
+      await loadPeople(); await render(false); await select(p.id);
+    }catch(err){toast(err.message);}
+  };
+}
 function openForm(kind){
   const p=$('#panel')._p; if(!p) return;
+  if(kind==='edit') return openEdit(p);
   if(kind==='parent'&&p.parents.length>=2) return toast(`${p.name} already has two parents`);
   const cur=p.spouses.filter(s=>s.current);
   const label={parent:'Add parent',spouse:'Add husband / wife',child:'Add child'}[kind];
@@ -255,6 +272,16 @@ function openForm(kind){
 }
 
 /* ---------- boot ---------- */
+function firstPerson(){
+  const el=$('#panel'); el.classList.add('open'); el._p=null;
+  el.innerHTML=`<h2>Start your tree</h2><div class="sub">No one is here yet. Add the first person.</div>
+    <form id="f"><input name="name" placeholder="Full name" required>
+    <select name="gender"><option value="">Gender</option><option value="M">Male</option><option value="F">Female</option><option value="O">Other</option></select>
+    <input name="birth" placeholder="Birth (e.g. 1950)"><input name="death" placeholder="Death (optional)">
+    <button class="btn" type="submit">Create</button></form>`;
+  $('#f').onsubmit=async e=>{e.preventDefault(); const f=Object.fromEntries(new FormData(e.target));
+    try{const p=await api('/api/person',f); await loadPeople(); focus=p.id; closePanel(); await render();}catch(err){toast(err.message);}};
+}
 async function loadPeople(){
   people=await api('/api/people');
   $('#plist').innerHTML=people.map(p=>`<option value="${esc(p.name)} [${p.id}]">`).join('');
@@ -268,7 +295,7 @@ $('#depth').onchange=e=>{depth=+e.target.value;render();};
 $('#fit').onclick=fitView; addEventListener('resize',()=>fitView());
 $('#panel').addEventListener('click',e=>e.stopPropagation());
 (async()=>{
-  await loadPeople(); if(!people.length) return toast('No people yet - add some to family.txt');
+  await loadPeople(); if(!people.length) return firstPerson();
   const [v,id]=location.hash.slice(1).split('/');
   if(v==='descendants'){view='descendants';$('#v-ped').classList.remove('on');$('#v-desc').classList.add('on');}
   focus=byId(id)?id:people[0].id; depth=+$('#depth').value; await render();

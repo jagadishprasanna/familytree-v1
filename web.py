@@ -1,22 +1,23 @@
 """Web frontend + JSON API for the family tree (standard library only).
 
-Run:  python web.py [family.txt] [--port 8000] [--host 127.0.0.1]
+Run:  python web.py [family.txt | gsheet:<id>] [--port 8000] [--host 127.0.0.1]
 Then open http://127.0.0.1:8000
 
-Uses the same text file as the MCP server, so Claude edits (via MCP) and
-browser edits show up in each other (reload the page / re-render).
+With no file argument it uses the Google Sheet named by GOOGLE_SHEET_ID
+(credentials in GOOGLE_SERVICE_ACCOUNT_JSON / _FILE), else FAMILY_FILE / family.txt.
+It uses the same data as the MCP server, so edits made by Claude and in the
+browser show up in each other (reload the page).
 """
 from __future__ import annotations
 
 import argparse
 import json
-import os
 import re
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from family_store import FamilyError, FamilyStore, to_dict
+from family_store import FamilyError, FamilyStore, open_store, to_dict
 
 WEB_DIR = Path(__file__).with_name("web")
 store: FamilyStore
@@ -103,12 +104,18 @@ class Handler(BaseHTTPRequestHandler):
             return self._error("not found", 404)
         except (FamilyError, KeyError, ValueError) as e:
             return self._error(str(e))
+        except Exception as e:  # never drop the connection (Render would show a 502)
+            return self._error(f"server error: {type(e).__name__}: {e}", 500)
 
     def do_POST(self):
         try:
             n = int(self.headers.get("Content-Length") or 0)
             data = json.loads(self.rfile.read(n) or b"{}")
             path = urlparse(self.path).path
+            if m := re.fullmatch(r"/api/person/([^/]+)", path):
+                p = store.update_person(m.group(1), data.get("name"), data.get("gender"),
+                                        data.get("birth"), data.get("death"))
+                return self._json(to_dict(p))
             if path == "/api/person":
                 p = store.add_person(data.get("name", ""), data.get("gender", ""),
                                      data.get("birth", ""), data.get("death", ""),
@@ -123,18 +130,19 @@ class Handler(BaseHTTPRequestHandler):
             return self._error("not found", 404)
         except (FamilyError, KeyError, ValueError, json.JSONDecodeError) as e:
             return self._error(str(e))
+        except Exception as e:
+            return self._error(f"server error: {type(e).__name__}: {e}", 500)
 
 
 def main() -> None:
     global store
     ap = argparse.ArgumentParser()
-    ap.add_argument("file", nargs="?", default=os.environ.get(
-        "FAMILY_FILE", str(Path(__file__).with_name("family.txt"))))
+    ap.add_argument("file", nargs="?", default=None)
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--port", type=int, default=8000)
     a = ap.parse_args()
-    store = FamilyStore(a.file)
-    print(f"Family tree: http://{a.host}:{a.port}  (data: {a.file})")
+    store = open_store(a.file)
+    print(f"Family tree: http://{a.host}:{a.port}  (data: {store.describe()})", flush=True)
     ThreadingHTTPServer((a.host, a.port), Handler).serve_forever()
 
 

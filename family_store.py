@@ -1,14 +1,8 @@
-"""Text-file backed family tree store.
+"""Family tree store: in-memory graph on top of a pluggable backend.
 
-File format (pipe-delimited, one record per line, '#' starts a comment):
-
-    PERSON  | id | name | gender (M/F/O/blank) | birth | death
-    MARRIED | husband_or_wife_id | other_spouse_id | start | end
-    PARENT  | parent_id | child_id
-
-The file is re-read whenever it changes on disk, so you can edit it by hand
-while the MCP server is running. Writes are appended, so comments and
-ordering in your file are preserved.
+Backends (see backends.py): a pipe-delimited text file or a Google Sheet.
+The data is re-read when it changes (text: file mtime; sheet: short cache),
+so hand edits made in the file/sheet show up without restarting.
 """
 from __future__ import annotations
 
@@ -18,9 +12,9 @@ from dataclasses import dataclass, asdict
 from pathlib import Path
 from threading import RLock
 
+from backends import FamilyError, SheetBackend, TextBackend  # noqa: F401  (re-exported)
 
-class FamilyError(ValueError):
-    """Raised for invalid data or invalid operations."""
+DEFAULT_FILE = Path(__file__).with_name("family.txt")
 
 
 @dataclass
@@ -47,100 +41,102 @@ class Marriage:
 
 
 class FamilyStore:
-    def __init__(self, path: str | os.PathLike):
-        self.path = Path(path)
+    def __init__(self, source):
+        """source: a file path (text backend) or a backend object."""
+        self.backend = source if hasattr(source, "read") else TextBackend(source)
         self._lock = RLock()
-        self._mtime: float | None = None
         self.people: dict[str, Person] = {}
         self.marriages: list[Marriage] = []
         self.parents: dict[str, list[str]] = {}   # child -> [parents]
         self.children: dict[str, list[str]] = {}  # parent -> [children]
-        if not self.path.exists():
-            self.path.write_text(
-                "# Family tree data\n"
-                "# PERSON | id | name | gender | birth | death\n"
-                "# MARRIED | id | id | start | end\n"
-                "# PARENT | parent_id | child_id\n",
-                encoding="utf-8",
-            )
         self._load(force=True)
+
+    def describe(self) -> str:
+        return self.backend.describe()
 
     # ------------------------------------------------------------------ load
     def _load(self, force: bool = False) -> None:
         with self._lock:
-            mtime = self.path.stat().st_mtime
-            if not force and mtime == self._mtime:
+            if not force and not self.backend.stale():
                 return
             people: dict[str, Person] = {}
             marriages: list[Marriage] = []
-            links: list[tuple[str, str, int]] = []
-            for n, raw in enumerate(self.path.read_text(encoding="utf-8").splitlines(), 1):
-                line = raw.strip()
-                if not line or line.startswith("#"):
-                    continue
-                f = [x.strip() for x in line.split("|")]
-                kind, f = f[0].upper(), f[1:]
+            pairs: list[tuple[str, str]] = []
+            links: list[tuple[str, str, str]] = []
+            for kind, f, where in self.backend.read():
                 if kind == "PERSON":
                     if len(f) < 2 or not f[0] or not f[1]:
-                        raise FamilyError(f"line {n}: PERSON needs id and name")
+                        raise FamilyError(f"{where}: PERSON needs id and name")
                     if f[0] in people:
-                        raise FamilyError(f"line {n}: duplicate person id {f[0]}")
-                    f += [""] * (5 - len(f))
+                        raise FamilyError(f"{where}: duplicate person id {f[0]}")
+                    f = (f + [""] * 5)[:5]
                     people[f[0]] = Person(f[0], f[1], f[2].upper(), f[3], f[4])
                 elif kind == "MARRIED":
                     if len(f) < 2:
-                        raise FamilyError(f"line {n}: MARRIED needs two ids")
-                    f += [""] * (4 - len(f))
+                        raise FamilyError(f"{where}: MARRIED needs two ids")
+                    f = (f + [""] * 4)[:4]
                     marriages.append(Marriage(f[0], f[1], f[2], f[3]))
-                    links.append((f[0], f[1], n))
+                    links.append((f[0], f[1], where))
                 elif kind == "PARENT":
                     if len(f) < 2:
-                        raise FamilyError(f"line {n}: PARENT needs parent and child ids")
-                    links.append((f[0], f[1], n))
+                        raise FamilyError(f"{where}: PARENT needs parent and child ids")
+                    pairs.append((f[0], f[1]))
+                    links.append((f[0], f[1], where))
                 else:
-                    raise FamilyError(f"line {n}: unknown record type {kind!r}")
-            for a, b, n in links:
+                    raise FamilyError(f"{where}: unknown record type {kind!r}")
+            for a, b, where in links:
                 for pid in (a, b):
                     if pid not in people:
-                        raise FamilyError(f"line {n}: unknown person id {pid!r}")
+                        raise FamilyError(f"{where}: unknown person id {pid!r}")
             parents: dict[str, list[str]] = {}
             children: dict[str, list[str]] = {}
-            for n, raw in enumerate(self.path.read_text(encoding="utf-8").splitlines(), 1):
-                f = [x.strip() for x in raw.split("|")]
-                if f and f[0].upper() == "PARENT" and len(f) >= 3:
-                    p, c = f[1], f[2]
-                    parents.setdefault(c, []).append(p)
-                    children.setdefault(p, []).append(c)
+            for p, c in pairs:
+                parents.setdefault(c, []).append(p)
+                children.setdefault(p, []).append(c)
             self.people, self.marriages = people, marriages
             self.parents, self.children = parents, children
-            self._mtime = mtime
-
-    def _append(self, line: str) -> None:
-        text = self.path.read_text(encoding="utf-8")
-        prefix = "" if (not text or text.endswith("\n")) else "\n"
-        with self.path.open("a", encoding="utf-8") as fh:
-            fh.write(prefix + line + "\n")
-        self._load(force=True)
 
     # ---------------------------------------------------------------- writes
+    @staticmethod
+    def _clean_fields(name: str, gender: str, birth: str, death: str) -> tuple[str, str, str, str]:
+        name, gender, birth, death = name.strip(), gender.strip().upper(), birth.strip(), death.strip()
+        if not name:
+            raise FamilyError("name is required")
+        for v in (name, gender, birth, death):
+            if "|" in v or "\n" in v or "\r" in v:
+                raise FamilyError("'|' and newlines are not allowed in values")
+        if gender not in ("", "M", "F", "O"):
+            raise FamilyError("gender must be M, F, O or blank")
+        return name, gender, birth, death
+
     def add_person(self, name: str, gender: str = "", birth: str = "",
                    death: str = "", person_id: str = "") -> Person:
         with self._lock:
             self._load()
-            name = name.strip()
-            if not name:
-                raise FamilyError("name is required")
-            for s in (name, gender, birth, death, person_id):
-                if "|" in s or "\n" in s:
-                    raise FamilyError("'|' and newlines are not allowed in values")
-            gender = gender.strip().upper()
-            if gender not in ("", "M", "F", "O"):
-                raise FamilyError("gender must be M, F, O or blank")
+            name, gender, birth, death = self._clean_fields(name, gender, birth, death)
+            if "|" in person_id or "\n" in person_id:
+                raise FamilyError("'|' and newlines are not allowed in values")
             pid = person_id.strip() or self._next_id()
             if pid in self.people:
                 raise FamilyError(f"person id {pid} already exists")
-            self._append(f"PERSON | {pid} | {name} | {gender} | {birth.strip()} | {death.strip()}")
+            self.backend.add_person([pid, name, gender, birth, death])
+            self._load(force=True)
             return self.people[pid]
+
+    def update_person(self, person_id: str, name: str | None = None, gender: str | None = None,
+                      birth: str | None = None, death: str | None = None) -> Person:
+        """Change a person's details. None = leave unchanged; "" = clear (not for name)."""
+        with self._lock:
+            self._load()
+            cur = self._need(person_id)
+            name, gender, birth, death = self._clean_fields(
+                cur.name if name is None else name,
+                cur.gender if gender is None else gender,
+                cur.birth if birth is None else birth,
+                cur.death if death is None else death)
+            self.backend.update_person([person_id, name, gender, birth, death])
+            self._load(force=True)
+            return self.people[person_id]
 
     def add_marriage(self, a: str, b: str, start: str = "", end: str = "") -> Marriage:
         with self._lock:
@@ -152,7 +148,8 @@ class FamilyStore:
                 raise FamilyError("these people are directly related as ancestor/descendant")
             if any({m.a, m.b} == {a, b} and m.start == start for m in self.marriages):
                 raise FamilyError("this marriage already exists")
-            self._append(f"MARRIED | {a} | {b} | {start} | {end}")
+            self.backend.add_marriage([a, b, start, end])
+            self._load(force=True)
             return self.marriages[-1]
 
     def add_parent_child(self, parent: str, child: str) -> None:
@@ -167,7 +164,8 @@ class FamilyStore:
                 raise FamilyError(f"{child} already has two parents")
             if parent in self.descendants(child):
                 raise FamilyError("this would create a cycle (parent is a descendant of child)")
-            self._append(f"PARENT | {parent} | {child}")
+            self.backend.add_parent([parent, child])
+            self._load(force=True)
 
     # --------------------------------------------------------------- queries
     def _need(self, pid: str) -> Person:
@@ -346,3 +344,20 @@ class FamilyStore:
 
 def to_dict(p: Person) -> dict:
     return asdict(p)
+
+
+def open_store(arg: str | None = None) -> FamilyStore:
+    """Pick the storage backend.
+
+    arg "gsheet:<id-or-url>"  -> Google Sheet
+    arg <path>                -> text file
+    no arg: GOOGLE_SHEET_ID env -> Google Sheet, else FAMILY_FILE env, else family.txt
+    """
+    if arg and arg.startswith("gsheet:"):
+        return FamilyStore(SheetBackend.from_env(arg[len("gsheet:"):]))
+    if arg:
+        return FamilyStore(TextBackend(arg))
+    sheet = os.environ.get("GOOGLE_SHEET_ID", "").strip()
+    if sheet:
+        return FamilyStore(SheetBackend.from_env(sheet))
+    return FamilyStore(TextBackend(os.environ.get("FAMILY_FILE", str(DEFAULT_FILE))))
