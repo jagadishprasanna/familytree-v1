@@ -90,9 +90,6 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, (WEB_DIR / "index.html").read_bytes(), "text/html; charset=utf-8")
             if u.path == "/favicon.ico":
                 return self._send(204, b"", "image/x-icon")
-            if u.path == "/api/status":
-                kind = "google-sheet" if store.backend.__class__.__name__ == "SheetBackend" else "text-file"
-                return self._json({"source": kind, "location": store.describe()})
             if u.path == "/api/people":
                 store._load()
                 return self._json([to_dict(p) for p in store.people.values()])
