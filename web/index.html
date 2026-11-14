@@ -33,6 +33,8 @@
   .pic{width:84px;height:84px;border-radius:50%;object-fit:cover;background:#e9eeeb;border:3px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.28);flex:none;display:block}
   .pic.M{box-shadow:0 0 0 3px var(--m)} .pic.F{box-shadow:0 0 0 3px var(--f)}
   .pic svg{width:100%;height:100%} .pic.empty{cursor:pointer}
+  .attrs{display:grid;grid-template-columns:auto 1fr;gap:3px 12px;margin:10px 0;padding:9px 12px;background:#f7f9f8;border:1px solid #e1e8e4;border-radius:8px}
+  .attrs dt{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.05em;align-self:center} .attrs dd{margin:0;font-weight:600}
   .hdr h2{margin:0} .hdr .sub{margin:2px 0 0}
   .card.M .av{fill:#e3eef8} .card.F .av{fill:#f8e6ec}
   .card.focus rect:first-child{stroke:var(--green);stroke-width:3}
@@ -83,7 +85,7 @@
   <div class="hint"><b id="src"></b> · Drag to pan · scroll to zoom · click a card for details · double-click to re-center the tree</div>
   <aside id="panel"></aside>
 </main>
-<datalist id="plist"></datalist>
+<datalist id="plist"></datalist><datalist id="nakl"></datalist><datalist id="gotl"></datalist>
 <input type="file" id="pfile" accept="image/*" hidden>
 <div id="toast"></div>
 
@@ -102,6 +104,12 @@ async function api(path,body){
 function toast(m,ok){const t=$('#toast');t.style.background=ok?'#2e6a4e':'';t.textContent=m;t.style.display='block';clearTimeout(toast.h);toast.h=setTimeout(()=>t.style.display='none',3500);}
 const yr=s=>((s||'').match(/\d{4}/)||[''])[0];
 function years(p){const b=yr(p.birth),d=yr(p.death); if(!b&&!d)return ''; return `${b||'?'} – ${d||(b?'Living':'')}`;}
+const NAKSHATRAS=['Ashwini','Bharani','Krittika','Rohini','Mrigashira','Ardra','Punarvasu','Pushya','Ashlesha','Magha',
+  'Purva Phalguni','Uttara Phalguni','Hasta','Chitra','Swati','Vishakha','Anuradha','Jyeshtha','Mula','Purva Ashadha',
+  'Uttara Ashadha','Shravana','Dhanishta','Shatabhisha','Purva Bhadrapada','Uttara Bhadrapada','Revati'];
+const GOTRAS=['Atri','Bharadwaja','Gautama','Jamadagni','Kashyapa','Vasishtha','Vishvamitra','Agastya','Angirasa','Kaushika','Kaundinya','Srivatsa'];
+const extraFields=(v={})=>`<label>Nakshatra</label><input name="nakshatra" list="nakl" value="${esc(v.nakshatra||'')}" placeholder="Birth star, e.g. Rohini" autocomplete="off">
+    <label>Gotra</label><input name="gotra" list="gotl" value="${esc(v.gotra||'')}" placeholder="e.g. Bharadwaja" autocomplete="off">`;
 const photoUrl=p=>`/api/photo/${p.id}?v=${encodeURIComponent(p.photo)}`;
 let MAXPHOTO=250000;
 const trunc=(s,n)=>s.length>n?s.slice(0,n-1)+'…':s;
@@ -228,6 +236,7 @@ async function select(id,keepScroll){
       <div class="sub">${esc([g,years(p)].filter(Boolean).join(' · '))} <span class="none">· ${p.id}</span></div></div>
     </div>
     ${rel?`<div class="rel">${esc(rel)}</div>`:''}
+    ${(p.nakshatra||p.gotra)?`<dl class="attrs">${p.nakshatra?`<dt>Nakshatra</dt><dd>${esc(p.nakshatra)}</dd>`:''}${p.gotra?`<dt>Gotra</dt><dd>${esc(p.gotra)}</dd>`:''}</dl>`:''}
     <div class="row">
       <button class="btn" data-act="focus">View tree</button>
       <button class="btn ghost" data-act="edit">Edit</button>
@@ -307,10 +316,11 @@ function openEdit(p){
     <label>Gender</label><select name="gender">${opt('','Not set')}${opt('M','Male')}${opt('F','Female')}${opt('O','Other')}</select>
     <label>Birth</label><input name="birth" value="${esc(p.birth)}" placeholder="e.g. 1950 or 1950-03-01">
     <label>Death</label><input name="death" value="${esc(p.death)}" placeholder="blank if living">
+    ${extraFields(p)}
     <div class="row"><button class="btn" type="submit">Save</button><button class="btn ghost" type="button" id="cancel">Cancel</button></div></form>`;
   $('#cancel').onclick=()=>$('#formbox').innerHTML='';
   $('#f').onsubmit=async e=>{e.preventDefault(); const f=Object.fromEntries(new FormData(e.target));
-    try{ await api(`/api/person/${p.id}`,{name:f.name,gender:f.gender,birth:f.birth,death:f.death});
+    try{ await api(`/api/person/${p.id}`,{name:f.name,gender:f.gender,birth:f.birth,death:f.death,nakshatra:f.nakshatra,gotra:f.gotra});
       await loadPeople(); await render(false); await select(p.id);
     }catch(err){toast(err.message);}
   };
@@ -320,6 +330,8 @@ function openForm(kind){
   if(kind==='edit') return openEdit(p);
   if(kind==='parent'&&p.parents.length>=2) return toast(`${p.name} already has two parents`);
   const cur=p.spouses.filter(s=>s.current);
+  // gotra is inherited through the father: suggest it for a new child (editable)
+  const fatherGotra=([p,...cur].find(x=>x.gender==='M'&&x.gotra)||{}).gotra||'';
   const label={parent:'Add parent',spouse:'Add husband / wife',child:'Add child'}[kind];
   $('#formbox').innerHTML=`<form id="f"><b>${label}</b>
     <label>Link an existing person (optional)</label>
@@ -328,6 +340,7 @@ function openForm(kind){
     <input name="name" placeholder="Full name">
     <select name="gender"><option value="">Gender</option><option value="M">Male</option><option value="F">Female</option><option value="O">Other</option></select>
     <input name="birth" placeholder="Birth (e.g. 1950)"><input name="death" placeholder="Death (optional)">
+    ${extraFields(kind==='child'?{gotra:fatherGotra}:{})}
     ${kind==='spouse'?'<input name="start" placeholder="Marriage year (optional)">':''}
     ${kind==='child'&&cur.length===1?`<label class="chk"><input type="checkbox" name="other" checked> Also a child of ${esc(cur[0].name)}</label>`:''}
     <div class="row"><button class="btn" type="submit">Save</button><button class="btn ghost" type="button" id="cancel">Cancel</button></div></form>`;
@@ -336,7 +349,7 @@ function openForm(kind){
     try{
       let id=(f.existing.match(/\[(\w+)\]\s*$/)||[])[1];
       if(!id){ if(!f.name.trim()) throw new Error('Enter a name or pick an existing person');
-        id=(await api('/api/person',{name:f.name,gender:f.gender,birth:f.birth,death:f.death})).id; }
+        id=(await api('/api/person',{name:f.name,gender:f.gender,birth:f.birth,death:f.death,nakshatra:f.nakshatra,gotra:f.gotra})).id; }
       if(kind==='parent') await api('/api/parent',{parent_id:id,child_id:p.id});
       if(kind==='child'){ await api('/api/parent',{parent_id:p.id,child_id:id});
         if(f.other&&cur[0]) await api('/api/parent',{parent_id:cur[0].id,child_id:id}); }
@@ -353,13 +366,19 @@ function firstPerson(){
     <form id="f"><input name="name" placeholder="Full name" required>
     <select name="gender"><option value="">Gender</option><option value="M">Male</option><option value="F">Female</option><option value="O">Other</option></select>
     <input name="birth" placeholder="Birth (e.g. 1950)"><input name="death" placeholder="Death (optional)">
+    ${extraFields()}
     <button class="btn" type="submit">Create</button></form>`;
   $('#f').onsubmit=async e=>{e.preventDefault(); const f=Object.fromEntries(new FormData(e.target));
     try{const p=await api('/api/person',f); await loadPeople(); focus=p.id; closePanel(); await render();}catch(err){toast(err.message);}};
 }
+function fillLists(){
+  const known=k=>[...new Set(people.map(p=>p[k]).filter(Boolean))];
+  const opts=(base,k)=>[...new Set([...base,...known(k)])].map(v=>`<option value="${esc(v)}">`).join('');
+  $('#nakl').innerHTML=opts(NAKSHATRAS,'nakshatra'); $('#gotl').innerHTML=opts(GOTRAS,'gotra');
+}
 async function loadPeople(){
   people=await api('/api/people');
-  $('#plist').innerHTML=people.map(p=>`<option value="${esc(p.name)} [${p.id}]">`).join('');
+  $('#plist').innerHTML=people.map(p=>`<option value="${esc(p.name)} [${p.id}]">`).join(''); fillLists();
 }
 $('#search').addEventListener('change',e=>{const id=(e.target.value.match(/\[(\w+)\]\s*$/)||[])[1]
   ||people.find(p=>p.name.toLowerCase()===e.target.value.trim().toLowerCase())?.id;

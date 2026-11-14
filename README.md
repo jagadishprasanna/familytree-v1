@@ -16,7 +16,7 @@ The app creates these tabs on first run (plus a `Photos` tab, see below) (you ca
 
 | Tab | Columns |
 |---|---|
-| People | id, name, gender (M/F/O), birth, death |
+| People | id, name, gender (M/F/O), birth, death, nakshatra, gotra |
 | Marriages | person_a, person_b, start, end  (fill `end` for divorce/death) |
 | Parents | parent_id, child_id  (max two parents per child) |
 
@@ -36,6 +36,14 @@ Import the sample/your existing data once:
     python server.py                 # MCP server (stdio)
     python web.py family.txt         # a file argument forces the old text-file mode
     python test_family.py            # tests (run against both backends, using an in-memory fake Sheets API)
+
+## Nakshatra and Gotra
+Every person has two optional fields, **Nakshatra** (birth star) and **Gotra**. Set them in the **Edit** form or when
+adding someone; they appear in a small details box in the side panel. Both are free text, so spelling variants are fine;
+the boxes also suggest the 27 nakshatras and common gotras (plus anything already used in your tree).
+When you add a child, the Gotra box is pre-filled from the father (editable), since gotra passes through the father's line.
+An existing sheet keeps working: the `nakshatra` and `gotra` column headings are added to the People tab on the next
+start (columns F and G), and older text-file lines with only five fields still load.
 
 ## Deleting people
 Click a person, then **Delete person...** at the bottom of the side panel. A confirmation spells out what goes with them
@@ -103,6 +111,6 @@ Write: add_person, update_person, delete_person, set_person_photo, remove_person
 Validation rejects unknown ids, duplicates, parent/child cycles, more than two parents, and marrying an ancestor/descendant.
 
 ## Text-file format (optional local mode)
-    PERSON  | id | name | gender | birth | death
+    PERSON  | id | name | gender | birth | death | nakshatra | gotra
     MARRIED | id | id | start | end
     PARENT  | parent_id | child_id

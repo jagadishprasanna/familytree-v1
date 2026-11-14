@@ -111,17 +111,19 @@ def show_ancestor_tree(person_id: str, max_depth: int = 10) -> str:
 # ------------------------------------------------------------------ writes
 @mcp.tool()
 def add_person(name: str, gender: str = "", birth: str = "", death: str = "",
-               person_id: str = "") -> dict:
+               person_id: str = "", nakshatra: str = "", gotra: str = "") -> dict:
     """Add a person. gender: M/F/O. Dates are free text (e.g. 1950 or 1950-03-01).
+    nakshatra (birth star, e.g. Rohini) and gotra (e.g. Bharadwaja) are optional free text.
     person_id is auto-generated (P1, P2, ...) when omitted."""
-    return to_dict(store.add_person(name, gender, birth, death, person_id))
+    return to_dict(store.add_person(name, gender, birth, death, person_id, nakshatra, gotra))
 
 
 @mcp.tool()
 def update_person(person_id: str, name: str | None = None, gender: str | None = None,
-                  birth: str | None = None, death: str | None = None) -> dict:
-    """Edit a person's details. Omit a field to keep it; pass "" to clear gender/birth/death."""
-    return to_dict(store.update_person(person_id, name, gender, birth, death))
+                  birth: str | None = None, death: str | None = None,
+                  nakshatra: str | None = None, gotra: str | None = None) -> dict:
+    """Edit a person's details. Omit a field to keep it; pass "" to clear gender/birth/death/nakshatra/gotra."""
+    return to_dict(store.update_person(person_id, name, gender, birth, death, nakshatra, gotra))
 
 
 @mcp.tool()

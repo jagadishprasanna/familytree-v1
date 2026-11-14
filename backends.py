@@ -8,7 +8,7 @@ Both expose the same small interface used by FamilyStore:
     update_person(fields)       -> rewrite the row/line of that person id
     describe()                  -> human readable location
 
-Record kinds: PERSON [id,name,gender,birth,death]
+Record kinds: PERSON [id,name,gender,birth,death,nakshatra,gotra]
               MARRIED [a,b,start,end]
               PARENT [parent_id,child_id]
               PHOTO [person_id,mime,version]   (metadata only; bytes via get_photo)
@@ -35,7 +35,7 @@ class FamilyError(ValueError):
     """Raised for invalid data or invalid operations."""
 
 
-FIELDS = {"PERSON": 5, "MARRIED": 4, "PARENT": 2}
+FIELDS = {"PERSON": 7, "MARRIED": 4, "PARENT": 2}
 EXT_MIME = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp"}
 MIME_EXT = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}
 
@@ -62,7 +62,7 @@ class TextBackend:
 
     HEADER = (
         "# Family tree data\n"
-        "# PERSON | id | name | gender | birth | death\n"
+        "# PERSON | id | name | gender | birth | death | nakshatra | gotra\n"
         "# MARRIED | id | id | start | end\n"
         "# PARENT | parent_id | child_id\n"
     )
@@ -194,12 +194,12 @@ class TextBackend:
 
 # ============================================================ Google Sheet
 TABS = {
-    "PERSON": ("People", ["id", "name", "gender", "birth", "death"]),
+    "PERSON": ("People", ["id", "name", "gender", "birth", "death", "nakshatra", "gotra"]),
     "MARRIED": ("Marriages", ["person_a", "person_b", "start", "end"]),
     "PARENT": ("Parents", ["parent_id", "child_id"]),
     "PHOTO": ("Photos", ["person_id", "mime", "version", "data"]),
 }
-READ_COLS = {"PERSON": 5, "MARRIED": 4, "PARENT": 2, "PHOTO": 3}   # PHOTO: skip the big data column
+READ_COLS = {"PERSON": 7, "MARRIED": 4, "PARENT": 2, "PHOTO": 3}   # PHOTO: skip the big data column
 
 
 def _col(n: int) -> str:
@@ -294,7 +294,10 @@ class SheetBackend:
                 title=title, rows=500, cols=len(header))
         res = self.sh.values_batch_get([f"{t}!1:1" for t, _ in TABS.values()])
         for (kind, (title, header)), vr in zip(TABS.items(), res.get("valueRanges", [])):
-            if not vr.get("values"):
+            have = [str(c).strip() for c in (vr.get("values") or [[]])[0]]
+            # empty tab -> write the header; older/shorter header (e.g. before nakshatra and
+            # gotra existed) -> add the missing column names. A custom header is left alone.
+            if not have or (have != header and header[:len(have)] == have):
                 self._ws[kind].update(range_name="A1", values=[header],
                                       value_input_option="RAW")
 
@@ -335,7 +338,7 @@ class SheetBackend:
         if row is None:
             raise FamilyError(f"could not find row for {f[0]}")
         self._call(lambda: self._ws["PERSON"].update(
-            range_name=f"A{row}:E{row}", values=[f], value_input_option="RAW"))
+            range_name=f"A{row}:G{row}", values=[f], value_input_option="RAW"))
 
     # --- photos (tab "Photos": person_id | mime | version | base64 data)
     def _photo_row(self, pid: str) -> int | None:
