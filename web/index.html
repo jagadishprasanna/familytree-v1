@@ -57,7 +57,7 @@
   .warn{background:#fdf3f3;border:1px solid #efc9c9;border-radius:8px;padding:10px 12px;margin-top:10px;color:#6b2323}
   .warn p{margin:0 0 10px}
   form{background:#f7f9f8;border:1px solid #e1e8e4;border-radius:8px;padding:10px;margin-top:10px;display:grid;gap:7px}
-  form input,form select{width:100%;padding:6px 8px;border:1px solid #cfd8d3;border-radius:6px;font:inherit}
+  form input,form select,form textarea{width:100%;resize:vertical;padding:6px 8px;border:1px solid #cfd8d3;border-radius:6px;font:inherit}
   form label{font-size:12px;color:var(--muted)} .chk{display:flex;gap:6px;align-items:center}
   .chk input{width:auto}
   #toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#8b2e2e;color:#fff;padding:9px 16px;border-radius:8px;display:none;z-index:9}
@@ -103,13 +103,14 @@ async function api(path,body){
   const j=await r.json(); if(!r.ok) throw new Error(j.error||r.statusText); return j;}
 function toast(m,ok){const t=$('#toast');t.style.background=ok?'#2e6a4e':'';t.textContent=m;t.style.display='block';clearTimeout(toast.h);toast.h=setTimeout(()=>t.style.display='none',3500);}
 const yr=s=>((s||'').match(/\d{4}/)||[''])[0];
-function years(p){const b=yr(p.birth),d=yr(p.death); if(!b&&!d)return ''; return `${b||'?'} – ${d||(b?'Living':'')}`;}
+function years(p){const b=yr(p.birth),d=yr(p.death); if(!b&&!d)return ''; return d?`${b||'?'} – ${d}`:b;}
 const NAKSHATRAS=['Ashwini','Bharani','Krittika','Rohini','Mrigashira','Ardra','Punarvasu','Pushya','Ashlesha','Magha',
   'Purva Phalguni','Uttara Phalguni','Hasta','Chitra','Swati','Vishakha','Anuradha','Jyeshtha','Mula','Purva Ashadha',
   'Uttara Ashadha','Shravana','Dhanishta','Shatabhisha','Purva Bhadrapada','Uttara Bhadrapada','Revati'];
 const GOTRAS=['Atri','Bharadwaja','Gautama','Jamadagni','Kashyapa','Vasishtha','Vishvamitra','Agastya','Angirasa','Kaushika','Kaundinya','Srivatsa'];
 const extraFields=(v={})=>`<label>Nakshatra</label><input name="nakshatra" list="nakl" value="${esc(v.nakshatra||'')}" placeholder="Birth star, e.g. Rohini" autocomplete="off">
-    <label>Gotra</label><input name="gotra" list="gotl" value="${esc(v.gotra||'')}" placeholder="e.g. Bharadwaja" autocomplete="off">`;
+    <label>Gotra</label><input name="gotra" list="gotl" value="${esc(v.gotra||'')}" placeholder="e.g. Bharadwaja" autocomplete="off">
+    <label>Ailments</label><textarea name="ailments" rows="3" maxlength="1000" placeholder="Free text, e.g. diabetes, hypertension">${esc(v.ailments||'')}</textarea>`;
 const photoUrl=p=>`/api/photo/${p.id}?v=${encodeURIComponent(p.photo)}`;
 let MAXPHOTO=250000;
 const trunc=(s,n)=>s.length>n?s.slice(0,n-1)+'…':s;
@@ -236,7 +237,7 @@ async function select(id,keepScroll){
       <div class="sub">${esc([g,years(p)].filter(Boolean).join(' · '))} <span class="none">· ${p.id}</span></div></div>
     </div>
     ${rel?`<div class="rel">${esc(rel)}</div>`:''}
-    ${(p.nakshatra||p.gotra)?`<dl class="attrs">${p.nakshatra?`<dt>Nakshatra</dt><dd>${esc(p.nakshatra)}</dd>`:''}${p.gotra?`<dt>Gotra</dt><dd>${esc(p.gotra)}</dd>`:''}</dl>`:''}
+    ${(p.nakshatra||p.gotra||p.ailments)?`<dl class="attrs">${p.nakshatra?`<dt>Nakshatra</dt><dd>${esc(p.nakshatra)}</dd>`:''}${p.gotra?`<dt>Gotra</dt><dd>${esc(p.gotra)}</dd>`:''}${p.ailments?`<dt>Ailments</dt><dd>${esc(p.ailments)}</dd>`:''}</dl>`:''}
     <div class="row">
       <button class="btn" data-act="focus">View tree</button>
       <button class="btn ghost" data-act="edit">Edit</button>
@@ -320,7 +321,7 @@ function openEdit(p){
     <div class="row"><button class="btn" type="submit">Save</button><button class="btn ghost" type="button" id="cancel">Cancel</button></div></form>`;
   $('#cancel').onclick=()=>$('#formbox').innerHTML='';
   $('#f').onsubmit=async e=>{e.preventDefault(); const f=Object.fromEntries(new FormData(e.target));
-    try{ await api(`/api/person/${p.id}`,{name:f.name,gender:f.gender,birth:f.birth,death:f.death,nakshatra:f.nakshatra,gotra:f.gotra});
+    try{ await api(`/api/person/${p.id}`,{name:f.name,gender:f.gender,birth:f.birth,death:f.death,nakshatra:f.nakshatra,gotra:f.gotra,ailments:f.ailments});
       await loadPeople(); await render(false); await select(p.id);
     }catch(err){toast(err.message);}
   };
@@ -349,7 +350,7 @@ function openForm(kind){
     try{
       let id=(f.existing.match(/\[(\w+)\]\s*$/)||[])[1];
       if(!id){ if(!f.name.trim()) throw new Error('Enter a name or pick an existing person');
-        id=(await api('/api/person',{name:f.name,gender:f.gender,birth:f.birth,death:f.death,nakshatra:f.nakshatra,gotra:f.gotra})).id; }
+        id=(await api('/api/person',{name:f.name,gender:f.gender,birth:f.birth,death:f.death,nakshatra:f.nakshatra,gotra:f.gotra,ailments:f.ailments})).id; }
       if(kind==='parent') await api('/api/parent',{parent_id:id,child_id:p.id});
       if(kind==='child'){ await api('/api/parent',{parent_id:p.id,child_id:id});
         if(f.other&&cur[0]) await api('/api/parent',{parent_id:cur[0].id,child_id:id}); }
