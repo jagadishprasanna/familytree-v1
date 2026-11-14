@@ -24,6 +24,7 @@ class Person:
     gender: str = ""
     birth: str = ""
     death: str = ""
+    photo: str = ""   # version token of the photo, "" when there is none
 
     def label(self) -> str:
         years = ""
@@ -40,6 +41,49 @@ class Marriage:
     end: str = ""
 
 
+def sniff_image(data: bytes) -> str:
+    """Return the MIME type from the file's magic bytes (never trust the client's claim)."""
+    if data[:3] == b"\xff\xd8\xff":
+        return "image/jpeg"
+    if data[:8] == b"\x89PNG\r\n\x1a\n":
+        return "image/png"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
+    raise FamilyError("Photo must be a JPEG, PNG or WebP image")
+
+
+def fit_photo(data: bytes, max_bytes: int, side: int = 400) -> bytes:
+    """Return image bytes that fit in max_bytes: unchanged if already small enough,
+    otherwise a centre-cropped square JPEG (needs Pillow: pip install pillow)."""
+    sniff_image(data)
+    if len(data) <= max_bytes:
+        return data
+    try:
+        import io
+        from PIL import Image, ImageOps
+    except ImportError as e:
+        raise FamilyError(f"Photo is {len(data) // 1024} KB (limit {max_bytes // 1024} KB). "
+                          "Install Pillow (pip install pillow) to shrink photos automatically.") from e
+    try:
+        img = ImageOps.exif_transpose(Image.open(io.BytesIO(data)))
+        img = Image.alpha_composite(Image.new("RGBA", img.size, "white"), img.convert("RGBA")).convert("RGB")
+    except Exception as e:
+        raise FamilyError("Could not read that image") from e
+    w, h = img.size
+    m = min(w, h)
+    img = img.crop(((w - m) // 2, (h - m) // 2, (w - m) // 2 + m, (h - m) // 2 + m))
+    s = min(side, m)
+    while s >= 80:
+        small = img.resize((s, s), Image.LANCZOS)
+        for q in (85, 75, 65, 55, 45):
+            buf = io.BytesIO()
+            small.save(buf, "JPEG", quality=q, optimize=True)
+            if buf.tell() <= max_bytes:
+                return buf.getvalue()
+        s = int(s * 0.8)
+    raise FamilyError("Could not shrink that photo enough")
+
+
 class FamilyStore:
     def __init__(self, source):
         """source: a file path (text backend) or a backend object."""
@@ -49,6 +93,7 @@ class FamilyStore:
         self.marriages: list[Marriage] = []
         self.parents: dict[str, list[str]] = {}   # child -> [parents]
         self.children: dict[str, list[str]] = {}  # parent -> [children]
+        self.photos: dict[str, tuple[str, str]] = {}  # person id -> (mime, version)
         self._load(force=True)
 
     def describe(self) -> str:
@@ -62,6 +107,7 @@ class FamilyStore:
             people: dict[str, Person] = {}
             marriages: list[Marriage] = []
             pairs: list[tuple[str, str]] = []
+            photos: dict[str, tuple[str, str]] = {}
             links: list[tuple[str, str, str]] = []
             for kind, f, where in self.backend.read():
                 if kind == "PERSON":
@@ -82,8 +128,15 @@ class FamilyStore:
                         raise FamilyError(f"{where}: PARENT needs parent and child ids")
                     pairs.append((f[0], f[1]))
                     links.append((f[0], f[1], where))
+                elif kind == "PHOTO":
+                    if f and f[0]:
+                        f = (f + ["", "", ""])[:3]
+                        photos[f[0]] = (f[1], f[2] or "1")
                 else:
                     raise FamilyError(f"{where}: unknown record type {kind!r}")
+            for pid, (_, ver) in photos.items():
+                if pid in people:          # photos of removed people are ignored
+                    people[pid].photo = ver
             for a, b, where in links:
                 for pid in (a, b):
                     if pid not in people:
@@ -94,6 +147,7 @@ class FamilyStore:
                 parents.setdefault(c, []).append(p)
                 children.setdefault(p, []).append(c)
             self.people, self.marriages = people, marriages
+            self.photos = {k: v for k, v in photos.items() if k in people}
             self.parents, self.children = parents, children
 
     # ---------------------------------------------------------------- writes
@@ -135,6 +189,54 @@ class FamilyStore:
                 cur.birth if birth is None else birth,
                 cur.death if death is None else death)
             self.backend.update_person([person_id, name, gender, birth, death])
+            self._load(force=True)
+            return self.people[person_id]
+
+    def delete_person(self, person_id: str) -> dict:
+        """Remove a person and every marriage, parent/child link and photo that mentions them.
+        Other people are untouched (a child simply loses that parent). Cannot be undone."""
+        with self._lock:
+            self._load()
+            p = self._need(person_id)
+            summary = {
+                "person": asdict(p),
+                "marriages": sum(1 for m in self.marriages if person_id in (m.a, m.b)),
+                "parent_links": len(self.parents.get(person_id, [])) + len(self.children.get(person_id, [])),
+                "photo": person_id in self.photos,
+            }
+            self.backend.delete_person(person_id)
+            self._load(force=True)
+            return summary
+
+    # ---------------------------------------------------------------- photos
+    @property
+    def max_photo_bytes(self) -> int:
+        return getattr(self.backend, "max_photo_bytes", 0)
+
+    def set_photo(self, person_id: str, data: bytes) -> Person:
+        """Attach/replace a person's photo (JPEG, PNG or WebP, within the backend's size limit)."""
+        with self._lock:
+            self._load()
+            self._need(person_id)
+            mime = sniff_image(data)
+            if len(data) > self.max_photo_bytes:
+                raise FamilyError(f"Photo is too large ({len(data) // 1024} KB); "
+                                  f"the limit is {self.max_photo_bytes // 1024} KB")
+            self.backend.set_photo(person_id, mime, data)
+            self._load(force=True)
+            return self.people[person_id]
+
+    def get_photo(self, person_id: str) -> tuple[str, bytes] | None:
+        with self._lock:
+            self._load()
+            self._need(person_id)
+            return self.backend.get_photo(person_id) if person_id in self.photos else None
+
+    def delete_photo(self, person_id: str) -> Person:
+        with self._lock:
+            self._load()
+            self._need(person_id)
+            self.backend.delete_photo(person_id)
             self._load(force=True)
             return self.people[person_id]
 

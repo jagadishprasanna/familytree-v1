@@ -28,7 +28,12 @@
   .card{cursor:pointer}
   .card:hover rect:first-child{stroke:var(--green)}
   .card.M .bar{fill:var(--m)} .card.F .bar{fill:var(--f)} .card.O .bar{fill:var(--o)}
-  .card .av{fill:#e9eeeb} .card .sil{fill:#aebab3}
+  .card .av{fill:#e9eeeb} .card .sil{fill:#aebab3} .card .ring{fill:none;stroke:#d3dbd6;stroke-width:1.5}
+  .hdr{display:flex;gap:14px;align-items:center;margin-bottom:8px}
+  .pic{width:84px;height:84px;border-radius:50%;object-fit:cover;background:#e9eeeb;border:3px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.28);flex:none;display:block}
+  .pic.M{box-shadow:0 0 0 3px var(--m)} .pic.F{box-shadow:0 0 0 3px var(--f)}
+  .pic svg{width:100%;height:100%} .pic.empty{cursor:pointer}
+  .hdr h2{margin:0} .hdr .sub{margin:2px 0 0}
   .card.M .av{fill:#e3eef8} .card.F .av{fill:#f8e6ec}
   .card.focus rect:first-child{stroke:var(--green);stroke-width:3}
   .card.sel rect:first-child{stroke:var(--sel);stroke-width:3.5}
@@ -46,6 +51,9 @@
   .btn{background:var(--green);color:#fff;border:0;border-radius:6px;padding:7px 12px;cursor:pointer;font:inherit}
   .btn.ghost{background:#eef5f1;color:var(--green2)}
   .row{display:flex;gap:6px;flex-wrap:wrap}
+  .btn.danger{background:#fbeaea;color:#8b2e2e} .btn.danger.solid{background:#b03a3a;color:#fff}
+  .warn{background:#fdf3f3;border:1px solid #efc9c9;border-radius:8px;padding:10px 12px;margin-top:10px;color:#6b2323}
+  .warn p{margin:0 0 10px}
   form{background:#f7f9f8;border:1px solid #e1e8e4;border-radius:8px;padding:10px;margin-top:10px;display:grid;gap:7px}
   form input,form select{width:100%;padding:6px 8px;border:1px solid #cfd8d3;border-radius:6px;font:inherit}
   form label{font-size:12px;color:var(--muted)} .chk{display:flex;gap:6px;align-items:center}
@@ -68,13 +76,15 @@
   <button id="fit">Fit</button>
   <div class="grow"></div>
   <span class="hide-sm" id="focusname"></span>
+  <button id="logout" style="display:none">Sign out</button>
 </header>
 <main>
-  <svg id="svg"><g id="vp"></g></svg>
+  <svg id="svg"><defs><clipPath id="avclip"><circle cx="36" cy="33" r="20"/></clipPath></defs><g id="vp"></g></svg>
   <div class="hint"><b id="src"></b> · Drag to pan · scroll to zoom · click a card for details · double-click to re-center the tree</div>
   <aside id="panel"></aside>
 </main>
 <datalist id="plist"></datalist>
+<input type="file" id="pfile" accept="image/*" hidden>
 <div id="toast"></div>
 
 <script>
@@ -87,10 +97,13 @@ function S(tag,attrs={},parent){const e=document.createElementNS(NS,tag);
   for(const k in attrs)e.setAttribute(k,attrs[k]); if(parent)parent.appendChild(e); return e;}
 async function api(path,body){
   const r=await fetch(path, body?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:undefined);
+  if(r.status===401){location.replace('/login'); throw new Error('Signed out');}
   const j=await r.json(); if(!r.ok) throw new Error(j.error||r.statusText); return j;}
-function toast(m){const t=$('#toast');t.textContent=m;t.style.display='block';clearTimeout(toast.h);toast.h=setTimeout(()=>t.style.display='none',3500);}
+function toast(m,ok){const t=$('#toast');t.style.background=ok?'#2e6a4e':'';t.textContent=m;t.style.display='block';clearTimeout(toast.h);toast.h=setTimeout(()=>t.style.display='none',3500);}
 const yr=s=>((s||'').match(/\d{4}/)||[''])[0];
 function years(p){const b=yr(p.birth),d=yr(p.death); if(!b&&!d)return ''; return `${b||'?'} – ${d||(b?'Living':'')}`;}
+const photoUrl=p=>`/api/photo/${p.id}?v=${encodeURIComponent(p.photo)}`;
+let MAXPHOTO=250000;
 const trunc=(s,n)=>s.length>n?s.slice(0,n-1)+'…':s;
 const byId=id=>people.find(p=>p.id===id);
 
@@ -103,6 +116,8 @@ function card(g,p,x,y){
   S('circle',{cx:36,cy:CH/2,r:20,class:'av'},a);
   S('circle',{cx:36,cy:CH/2-5,r:6.5,class:'sil'},a);
   S('path',{d:`M23 ${CH/2+15} q13 -22 26 0z`,class:'sil'},a);
+  if(p.photo) S('image',{href:photoUrl(p),x:16,y:CH/2-20,width:40,height:40,preserveAspectRatio:'xMidYMid slice','clip-path':'url(#avclip)'},a);
+  S('circle',{cx:36,cy:CH/2,r:20,class:'ring'},a);
   S('text',{x:64,y:28,class:'nm'},a).textContent=trunc(p.name,17);
   S('text',{x:64,y:47,class:'yr'},a).textContent=years(p);
   S('title',{},a).textContent=p.name;
@@ -206,12 +221,18 @@ async function select(id,keepScroll){
   const g={M:'Male',F:'Female',O:'Other'}[p.gender]||'';
   const el=$('#panel');
   el.innerHTML=`
-    <h2>${esc(p.name)}</h2>
-    <div class="sub">${esc([g,years(p)].filter(Boolean).join(' · '))} <span class="none">· ${p.id}</span></div>
+    <div class="hdr">
+      ${p.photo?`<img class="pic ${p.gender||''}" src="${photoUrl(p)}" alt="" data-act="photo" title="Change photo">`
+        :`<div class="pic empty ${p.gender||''}" data-act="photo" title="Add a photo"><svg viewBox="0 0 84 84"><circle cx="42" cy="32" r="14" fill="#aebab3"/><path d="M14 80q28-52 56 0z" fill="#aebab3"/></svg></div>`}
+      <div><h2>${esc(p.name)}</h2>
+      <div class="sub">${esc([g,years(p)].filter(Boolean).join(' · '))} <span class="none">· ${p.id}</span></div></div>
+    </div>
     ${rel?`<div class="rel">${esc(rel)}</div>`:''}
     <div class="row">
       <button class="btn" data-act="focus">View tree</button>
       <button class="btn ghost" data-act="edit">Edit</button>
+      <button class="btn ghost" data-act="photo">${p.photo?'Change photo':'Add photo'}</button>
+      ${p.photo?'<button class="btn ghost" data-act="rmphoto">Remove photo</button>':''}
       <button class="btn ghost" data-act="parent">+ Parent</button>
       <button class="btn ghost" data-act="spouse">+ Spouse</button>
       <button class="btn ghost" data-act="child">+ Child</button>
@@ -220,10 +241,64 @@ async function select(id,keepScroll){
     <h3>Parents</h3>${links(p.parents)}
     <h3>Spouses</h3>${links(p.spouses,s=>s.name+(s.current?'':' (former)'))}
     <h3>Children</h3>${links(p.children)}
-    <h3>Siblings</h3>${links(p.siblings,s=>s.name+(s.type==='half'?' (half)':''))}`;
+    <h3>Siblings</h3>${links(p.siblings,s=>s.name+(s.type==='half'?' (half)':''))}
+    <h3>Remove</h3><button class="btn danger" data-act="delete">Delete person…</button><div id="delbox"></div>`;
   el.classList.add('open'); el._p=p;
   el.querySelectorAll('a[data-id]').forEach(a=>a.onclick=()=>select(a.dataset.id));
-  el.querySelectorAll('[data-act]').forEach(b=>b.onclick=()=>b.dataset.act==='focus'?setFocus(id):openForm(b.dataset.act));
+  el.querySelectorAll('[data-act]').forEach(b=>b.onclick=()=>{const a=b.dataset.act;
+    if(a==='focus') setFocus(id); else if(a==='photo') pickPhoto(p); else if(a==='rmphoto') removePhoto(p); else if(a==='delete') confirmDelete(p); else openForm(a);});
+}
+
+/* ---------- delete person ---------- */
+function confirmDelete(p){
+  const nLinks=p.parents.length+p.children.length, nMar=p.spouses.length;
+  const bits=[]; if(nLinks) bits.push(`${nLinks} parent/child link${nLinks>1?'s':''}`);
+  if(nMar) bits.push(`${nMar} marriage${nMar>1?'s':''}`); if(p.photo) bits.push('their photo');
+  $('#delbox').innerHTML=`<div class="warn"><p><b>Delete ${esc(p.name)}?</b>${bits.length?` This also removes ${bits.join(', ')}.`:''}
+    The people they were linked to stay in the tree. This can't be undone.</p>
+    <div class="row"><button class="btn danger solid" id="yesdel">Yes, delete</button><button class="btn ghost" id="nodel">Cancel</button></div></div>`;
+  $('#nodel').onclick=()=>$('#delbox').innerHTML='';
+  $('#yesdel').onclick=async()=>{
+    $('#yesdel').disabled=true;
+    try{
+      await api(`/api/person/${p.id}/delete`,{});
+      await loadPeople(); closePanel();
+      if(!people.length){focus=null; vp.innerHTML=''; $('#focusname').textContent=''; location.hash=''; firstPerson(); return;}
+      if(focus===p.id){const next=[...p.parents,...p.spouses,...p.children,...p.siblings].find(x=>byId(x.id)); focus=next?next.id:people[0].id;}
+      await render(false); toast(`${p.name} was deleted`,true);
+    }catch(e){toast(e.message); $('#yesdel').disabled=false;}
+  };
+}
+
+/* ---------- photos ---------- */
+function loadImage(file){return new Promise((res,rej)=>{const u=URL.createObjectURL(file),im=new Image();
+  im.onload=()=>{URL.revokeObjectURL(u);res(im);}; im.onerror=()=>{URL.revokeObjectURL(u);rej(new Error('Could not read that image. Try a JPG or PNG.'));}; im.src=u;});}
+const toBlob=(c,q)=>new Promise(r=>c.toBlob(r,'image/jpeg',q));
+async function shrink(file){   // centre-crop to a square, then lower size/quality until it fits the limit
+  const im=await loadImage(file), w=im.naturalWidth, h=im.naturalHeight, m=Math.min(w,h);
+  let S=Math.min(400,m);
+  while(S>=80){
+    const c=document.createElement('canvas'); c.width=c.height=S; const x=c.getContext('2d');
+    x.fillStyle='#fff'; x.fillRect(0,0,S,S); x.drawImage(im,(w-m)/2,(h-m)/2,m,m,0,0,S,S);
+    for(const q of [.85,.75,.65,.55,.45]){const b=await toBlob(c,q); if(b&&b.size<=MAXPHOTO) return b;}
+    S=Math.floor(S*.8);
+  }
+  throw new Error('Could not shrink that photo enough');
+}
+function pickPhoto(p){
+  const inp=$('#pfile'); inp.value='';
+  inp.onchange=async()=>{const f=inp.files[0]; if(!f) return;
+    try{
+      const blob=await shrink(f);
+      const r=await fetch(`/api/photo/${p.id}`,{method:'POST',headers:{'Content-Type':blob.type},body:blob});
+      if(r.status===401){location.replace('/login');return;}
+      const j=await r.json(); if(!r.ok) throw new Error(j.error||'Upload failed');
+      await loadPeople(); await render(false); await select(p.id);
+    }catch(e){toast(e.message);}};
+  inp.click();
+}
+async function removePhoto(p){
+  try{await api(`/api/photo/${p.id}/delete`,{}); await loadPeople(); await render(false); await select(p.id);}catch(e){toast(e.message);}
 }
 function openEdit(p){
   const opt=(v,l)=>`<option value="${v}" ${p.gender===v?'selected':''}>${l}</option>`;
@@ -295,7 +370,9 @@ $('#depth').onchange=e=>{depth=+e.target.value;render();};
 $('#fit').onclick=fitView; addEventListener('resize',()=>fitView());
 $('#panel').addEventListener('click',e=>e.stopPropagation());
 (async()=>{
-  try{const s=await api('/api/status'); $('#src').textContent=s.source==='google-sheet'?'Data: Google Sheet':'Data: text file (not Google Sheet)';}catch(e){}
+  try{const s=await api('/api/status'); if(s.max_photo_bytes) MAXPHOTO=Math.min(s.max_photo_bytes,250000); $('#src').textContent=s.source==='google-sheet'?'Data: Google Sheet':'Data: text file (not Google Sheet)';
+    if(s.auth){const b=$('#logout'); b.style.display=''; b.title='Signed in as '+s.user;
+      b.onclick=async()=>{await fetch('/logout',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}); location.replace('/login');};}}catch(e){}
   await loadPeople(); if(!people.length) return firstPerson();
   const [v,id]=location.hash.slice(1).split('/');
   if(v==='descendants'){view='descendants';$('#v-ped').classList.remove('on');$('#v-desc').classList.add('on');}

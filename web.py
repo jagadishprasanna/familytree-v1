@@ -36,6 +36,7 @@ WEB_DIR = Path(__file__).with_name("web")
 store: FamilyStore
 
 # ------------------------------------------------------------------- auth
+MAX_BODY = 12 * 1024 * 1024   # largest request body accepted
 COOKIE = "ft_session"
 AUTH: dict = {"enabled": False, "users": {}, "secret": b"", "ttl": 7 * 86400, "random_secret": False}
 MAX_FAILS, FAIL_WINDOW = 5, 15 * 60
@@ -151,7 +152,8 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
-        self.send_header("Cache-Control", "no-store")
+        if not any(k.lower() == "cache-control" for k, _ in headers or []):
+            self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("X-Frame-Options", "DENY")
         for k, v in headers or []:
@@ -232,7 +234,14 @@ class Handler(BaseHTTPRequestHandler):
             if u.path == "/api/status":
                 kind = "google-sheet" if store.backend.__class__.__name__ == "SheetBackend" else "text-file"
                 return self._json({"source": kind, "location": store.describe(),
-                                   "auth": AUTH["enabled"], "user": self._user()})
+                                   "auth": AUTH["enabled"], "user": self._user(),
+                                   "max_photo_bytes": store.max_photo_bytes})
+            if m := re.fullmatch(r"/api/photo/([^/]+)", u.path):
+                got = store.get_photo(m.group(1))
+                if not got:
+                    return self._error("no photo", 404)
+                return self._send(200, got[1], got[0],
+                                  [("Cache-Control", "private, max-age=86400")])  # URL carries ?v=<version>
             if u.path == "/api/people":
                 store._load()
                 return self._json([to_dict(p) for p in store.people.values()])
@@ -255,14 +264,24 @@ class Handler(BaseHTTPRequestHandler):
             if not self._same_origin():
                 return self._error("cross-site request blocked", 403)
             n = int(self.headers.get("Content-Length") or 0)
-            data = json.loads(self.rfile.read(n) or b"{}")
+            if n > MAX_BODY:
+                return self._error("request too large", 413)
+            raw = self.rfile.read(n)
             path = urlparse(self.path).path
-            if path == "/login":
-                return self._login(data)
-            if path == "/logout":
+            if path in ("/login", "/logout"):
+                data = json.loads(raw or b"{}")
+                if path == "/login":
+                    return self._login(data)
                 return self._json({"ok": True}, headers=self._cookie("", 0))
             if not self._user():
                 return self._error("not logged in", 401)
+            if m := re.fullmatch(r"/api/photo/([^/]+)", path):          # body = raw image bytes
+                return self._json(to_dict(store.set_photo(m.group(1), raw)), 201)
+            if m := re.fullmatch(r"/api/person/([^/]+)/delete", path):
+                return self._json(store.delete_person(m.group(1)))
+            if m := re.fullmatch(r"/api/photo/([^/]+)/delete", path):
+                return self._json(to_dict(store.delete_photo(m.group(1))))
+            data = json.loads(raw or b"{}")
             if m := re.fullmatch(r"/api/person/([^/]+)", path):
                 p = store.update_person(m.group(1), data.get("name"), data.get("gender"),
                                         data.get("birth"), data.get("death"))

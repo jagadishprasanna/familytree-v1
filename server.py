@@ -13,7 +13,9 @@ try:  # mcp >= 2
 except ImportError:  # mcp 1.x
     from mcp.server.fastmcp import FastMCP
 
-from family_store import open_store, to_dict
+from pathlib import Path
+
+from family_store import FamilyError, fit_photo, open_store, to_dict
 
 # arg: path to family.txt, or "gsheet:<id>"; default: GOOGLE_SHEET_ID env, else FAMILY_FILE/family.txt
 store = open_store(sys.argv[1] if len(sys.argv) > 1 else None)
@@ -120,6 +122,30 @@ def update_person(person_id: str, name: str | None = None, gender: str | None = 
                   birth: str | None = None, death: str | None = None) -> dict:
     """Edit a person's details. Omit a field to keep it; pass "" to clear gender/birth/death."""
     return to_dict(store.update_person(person_id, name, gender, birth, death))
+
+
+@mcp.tool()
+def set_person_photo(person_id: str, image_path: str) -> dict:
+    """Set a person's photo from an image file on this computer (JPEG/PNG/WebP).
+    Large photos are shrunk to a small square automatically (needs `pip install pillow`)."""
+    p = Path(image_path).expanduser()
+    if not p.is_file():
+        raise FamilyError(f"No such file: {image_path}")
+    data = fit_photo(p.read_bytes(), store.max_photo_bytes)
+    return to_dict(store.set_photo(person_id, data))
+
+
+@mcp.tool()
+def remove_person_photo(person_id: str) -> dict:
+    """Remove a person's photo."""
+    return to_dict(store.delete_photo(person_id))
+
+
+@mcp.tool()
+def delete_person(person_id: str) -> dict:
+    """PERMANENTLY remove a person, plus their marriages, parent/child links and photo.
+    Other people stay. Cannot be undone, so confirm with the user before calling this."""
+    return store.delete_person(person_id)
 
 
 @mcp.tool()

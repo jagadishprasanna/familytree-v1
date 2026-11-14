@@ -11,9 +11,17 @@ Both expose the same small interface used by FamilyStore:
 Record kinds: PERSON [id,name,gender,birth,death]
               MARRIED [a,b,start,end]
               PARENT [parent_id,child_id]
+              PHOTO [person_id,mime,version]   (metadata only; bytes via get_photo)
+
+delete_person(pid)           -> remove the person AND every marriage / parent link / photo that mentions them
+
+Photo methods: set_photo(pid, mime, data) / get_photo(pid) -> (mime, bytes)|None / delete_photo(pid),
+and the attribute max_photo_bytes.
 """
 from __future__ import annotations
 
+import base64
+import hashlib
 import json
 import os
 import re
@@ -28,6 +36,8 @@ class FamilyError(ValueError):
 
 
 FIELDS = {"PERSON": 5, "MARRIED": 4, "PARENT": 2}
+EXT_MIME = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp"}
+MIME_EXT = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}
 
 
 def pad(fields: list[str], kind: str) -> list[str]:
@@ -38,6 +48,8 @@ def pad(fields: list[str], kind: str) -> list[str]:
 def records_to_rows(records: list[Record]) -> dict[str, list[list[str]]]:
     rows: dict[str, list[list[str]]] = {k: [] for k in FIELDS}
     for kind, f, where in records:
+        if kind == "PHOTO":
+            continue  # photos are stored separately (Photos tab / photos folder)
         if kind not in FIELDS:
             raise FamilyError(f"{where}: unknown record type {kind!r}")
         rows[kind].append(pad(f, kind))
@@ -55,20 +67,40 @@ class TextBackend:
         "# PARENT | parent_id | child_id\n"
     )
 
+    max_photo_bytes = 5_000_000
+
     def __init__(self, path: str | os.PathLike):
         self.path = Path(path)
-        self._mtime: float | None = None
+        self._seen = None
         if not self.path.exists():
             self.path.write_text(self.HEADER, encoding="utf-8")
 
     def describe(self) -> str:
         return str(self.path)
 
+    # photos live next to the data file: family.txt -> family_photos/<id>.jpg
+    @property
+    def photo_dir(self) -> Path:
+        return self.path.parent / f"{self.path.stem}_photos"
+
+    def _photo_files(self) -> list[Path]:
+        d = self.photo_dir
+        return sorted(p for p in d.iterdir() if p.suffix.lower() in EXT_MIME) if d.is_dir() else []
+
+    def _stamp(self):
+        files = []
+        for p in self._photo_files():
+            try:
+                files.append((p.name, p.stat().st_mtime_ns))
+            except FileNotFoundError:
+                pass
+        return (self.path.stat().st_mtime, tuple(files))
+
     def stale(self) -> bool:
-        return self.path.stat().st_mtime != self._mtime
+        return self._stamp() != self._seen
 
     def read(self) -> list[Record]:
-        self._mtime = self.path.stat().st_mtime
+        self._seen = self._stamp()
         out: list[Record] = []
         for n, raw in enumerate(self.path.read_text(encoding="utf-8").splitlines(), 1):
             line = raw.strip()
@@ -76,7 +108,40 @@ class TextBackend:
                 continue
             f = [x.strip() for x in line.split("|")]
             out.append((f[0].upper(), f[1:], f"line {n}"))
+        for p in self._photo_files():
+            try:
+                ver = f"{p.stat().st_mtime_ns // 1000:x}"
+            except FileNotFoundError:
+                continue
+            out.append(("PHOTO", [p.stem, EXT_MIME[p.suffix.lower()], ver], f"photo file {p.name}"))
         return out
+
+    @staticmethod
+    def _safe_id(pid: str) -> None:
+        if not re.fullmatch(r"[\w-]+", pid):
+            raise FamilyError("photos need a person id made of letters, digits, '-' or '_'")
+
+    def set_photo(self, pid: str, mime: str, data: bytes) -> None:
+        self._safe_id(pid)
+        d = self.photo_dir
+        d.mkdir(parents=True, exist_ok=True)
+        tmp = d / f".{pid}.tmp"
+        tmp.write_bytes(data)
+        self.delete_photo(pid)
+        os.replace(tmp, d / f"{pid}{MIME_EXT[mime]}")
+
+    def get_photo(self, pid: str):
+        self._safe_id(pid)
+        for p in self._photo_files():
+            if p.stem == pid:
+                return EXT_MIME[p.suffix.lower()], p.read_bytes()
+        return None
+
+    def delete_photo(self, pid: str) -> None:
+        self._safe_id(pid)
+        for p in self._photo_files():
+            if p.stem == pid:
+                p.unlink()
 
     def _append(self, line: str) -> None:
         text = self.path.read_text(encoding="utf-8")
@@ -108,12 +173,33 @@ class TextBackend:
         os.replace(tmp, self.path)
 
 
+    def delete_person(self, pid: str) -> None:
+        keep = []
+        for raw in self.path.read_text(encoding="utf-8").splitlines():
+            parts = [x.strip() for x in raw.split("|")]
+            kind = parts[0].upper()
+            if kind == "PERSON" and len(parts) > 1 and parts[1] == pid:
+                continue
+            if kind in ("MARRIED", "PARENT") and pid in parts[1:3]:
+                continue
+            keep.append(raw)                       # comments, blank lines and everyone else stay
+        tmp = self.path.with_name(self.path.name + ".tmp")
+        tmp.write_text("\n".join(keep) + "\n", encoding="utf-8")
+        os.replace(tmp, self.path)
+        try:
+            self.delete_photo(pid)
+        except FamilyError:
+            pass                                   # id not usable as a file name: no photo file exists
+
+
 # ============================================================ Google Sheet
 TABS = {
     "PERSON": ("People", ["id", "name", "gender", "birth", "death"]),
     "MARRIED": ("Marriages", ["person_a", "person_b", "start", "end"]),
     "PARENT": ("Parents", ["parent_id", "child_id"]),
+    "PHOTO": ("Photos", ["person_id", "mime", "version", "data"]),
 }
+READ_COLS = {"PERSON": 5, "MARRIED": 4, "PARENT": 2, "PHOTO": 3}   # PHOTO: skip the big data column
 
 
 def _col(n: int) -> str:
@@ -141,6 +227,8 @@ class SheetBackend:
         self.label = label
         self._read_at = float("-inf")
         self._ws: dict = {}
+        self._photo_cache: dict[str, tuple[str, str, bytes]] = {}   # pid -> (version, mime, bytes)
+        self._photo_versions: dict[str, str] = {}
         self._call(self._ensure_schema)
 
     # --- connection
@@ -180,6 +268,9 @@ class SheetBackend:
             ttl = float(os.environ.get("SHEET_CACHE_SECONDS", "15"))
         return cls(sh, ttl=ttl, client_email=email, label=f"Google Sheet {sid}")
 
+    # A cell holds at most 50,000 characters; base64 inflates by 4/3, so keep photos small.
+    max_photo_bytes = 33_000
+
     def describe(self) -> str:
         return self.label
 
@@ -212,7 +303,7 @@ class SheetBackend:
         return time.monotonic() - self._read_at >= self.ttl
 
     def read(self) -> list[Record]:
-        ranges = [f"{t}!A:{_col(len(h))}" for t, h in TABS.values()]
+        ranges = [f"{t}!A:{_col(READ_COLS[k])}" for k, (t, h) in TABS.items()]
         res = self._call(self.sh.values_batch_get, ranges)
         out: list[Record] = []
         for (kind, (title, _)), vr in zip(TABS.items(), res.get("valueRanges", [])):
@@ -223,6 +314,7 @@ class SheetBackend:
                 if not any(f) or f[0].startswith("#"):
                     continue
                 out.append((kind, f, f"{title} row {i + 1}"))
+        self._photo_versions = {f[0]: (f + ["", ""])[2] for k, f, _ in out if k == "PHOTO" and f}
         self._read_at = time.monotonic()
         return out
 
@@ -245,9 +337,82 @@ class SheetBackend:
         self._call(lambda: self._ws["PERSON"].update(
             range_name=f"A{row}:E{row}", values=[f], value_input_option="RAW"))
 
+    # --- photos (tab "Photos": person_id | mime | version | base64 data)
+    def _photo_row(self, pid: str) -> int | None:
+        res = self._call(self.sh.values_batch_get, ["Photos!A:A"])
+        col = res.get("valueRanges", [{}])[0].get("values", [])
+        return next((i + 1 for i, r in enumerate(col) if i > 0 and r and r[0].strip() == pid), None)
+
+    def set_photo(self, pid: str, mime: str, data: bytes) -> None:
+        ver = hashlib.sha1(data).hexdigest()[:8]
+        row = [pid, mime, ver, base64.b64encode(data).decode()]
+        if len(row[3]) > 49_000:
+            raise FamilyError("Photo is too large for a Google Sheet cell")
+        at = self._photo_row(pid)
+        if at:
+            self._call(lambda: self._ws["PHOTO"].update(
+                range_name=f"A{at}:D{at}", values=[row], value_input_option="RAW"))
+        else:
+            self._call(lambda: self._ws["PHOTO"].append_row(
+                row, value_input_option="RAW", table_range="A1"))
+        self._photo_cache[pid] = (ver, mime, data)
+
+    def get_photo(self, pid: str):
+        have = self._photo_cache.get(pid)
+        if have is None or have[0] != self._photo_versions.get(pid):
+            self._load_all_photos()          # one request fetches every photo
+            have = self._photo_cache.get(pid)
+        return (have[1], have[2]) if have else None
+
+    def _load_all_photos(self) -> None:
+        res = self._call(self.sh.values_batch_get, ["Photos!A:D"])
+        cache: dict[str, tuple[str, str, bytes]] = {}
+        for i, r in enumerate(res.get("valueRanges", [{}])[0].get("values", [])):
+            if i == 0 or len(r) < 4 or not r[0].strip():
+                continue
+            try:
+                cache[r[0].strip()] = (r[2].strip(), r[1].strip(), base64.b64decode(r[3]))
+            except Exception:
+                continue                      # unreadable cell: treat as no photo
+        self._photo_cache = cache
+
+    def delete_photo(self, pid: str) -> None:
+        at = self._photo_row(pid)
+        if at:
+            self._call(self._ws["PHOTO"].delete_rows, at)
+        self._photo_cache.pop(pid, None)
+
+    def delete_person(self, pid: str) -> None:
+        """Delete the person's rows from every tab in ONE batch request (all or nothing)."""
+        res = self._call(self.sh.values_batch_get,
+                         ["People!A:A", "Marriages!A:B", "Parents!A:B", "Photos!A:A"])
+        found = {"PERSON": [], "MARRIED": [], "PARENT": [], "PHOTO": []}
+        for kind, vr in zip(("PERSON", "MARRIED", "PARENT", "PHOTO"), res.get("valueRanges", [])):
+            for i, row in enumerate(vr.get("values", [])):
+                if i > 0 and any(c.strip() == pid for c in row):
+                    found[kind].append(i + 1)
+        if not found["PERSON"]:
+            raise FamilyError(f"could not find row for {pid}")
+        requests = [
+            {"deleteDimension": {"range": {"sheetId": self._ws[kind].id, "dimension": "ROWS",
+                                           "startIndex": r - 1, "endIndex": r}}}
+            for kind in ("MARRIED", "PARENT", "PHOTO", "PERSON")
+            for r in sorted(found[kind], reverse=True)          # bottom-up so row numbers don't shift
+        ]
+        try:
+            self._call(self.sh.batch_update, {"requests": requests})
+        except FamilyError as e:
+            if "non-frozen" in str(e):
+                raise FamilyError("Google Sheets won't delete every row under a frozen header. "
+                                  "In the sheet use View > Freeze > No rows (on the People, Marriages "
+                                  "and Parents tabs), then try again.") from e
+            raise
+        self._photo_cache.pop(pid, None)
+
     def replace_all(self, rows: dict[str, list[list[str]]]) -> None:
         """Overwrite all three tabs (used by migrate_to_sheet.py)."""
-        for kind, (title, header) in TABS.items():
+        for kind in ("PERSON", "MARRIED", "PARENT"):      # never touches the Photos tab
+            title, header = TABS[kind]
             ws = self._ws[kind]
             self._call(ws.clear)
             self._call(lambda: ws.update(range_name="A1",
