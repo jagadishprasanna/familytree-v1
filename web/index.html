@@ -2,14 +2,15 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Family Tree</title>
 <style>
   :root{--bg:#f3f0e8;--ink:#22302a;--muted:#6c7a72;--green:#2e6a4e;--green2:#245640;
         --m:#5a8fbf;--f:#c97a8f;--o:#8f9a94;--line:#9fb0a6;--card:#fff;--sel:#f2b134}
   *{box-sizing:border-box}
-  html,body{height:100%;margin:0;font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:var(--ink);background:var(--bg)}
-  header{height:56px;background:var(--green);color:#fff;display:flex;align-items:center;gap:14px;padding:0 16px}
+  html,body{height:100%;margin:0;-webkit-text-size-adjust:100%;font:14px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:var(--ink);background:var(--bg)}
+  body{height:100vh;height:100dvh;display:flex;flex-direction:column;overflow:hidden}
+  header{flex:none;min-height:56px;background:var(--green);color:#fff;display:flex;align-items:center;gap:14px;padding:0 16px}
   header h1{font-size:18px;margin:0;display:flex;align-items:center;gap:8px;font-weight:600;white-space:nowrap}
   header input,header select,header button{height:34px;border-radius:6px;border:0;padding:0 10px;font:inherit}
   header input{width:260px}
@@ -18,8 +19,30 @@
   .seg button{border-radius:0;background:#3f8062;color:#fff}
   .seg button.on{background:#fff;color:var(--green2);font-weight:600}
   .grow{flex:1}
-  main{height:calc(100% - 56px);display:flex;position:relative}
-  #svg{flex:1;width:100%;height:100%;cursor:grab;background:
+  .treectl{} body.cap .treectl{display:none!important} body.cap main{display:none} body:not(.cap) #capsule{display:none}
+  #capsule{flex:1;min-height:0;display:flex;flex-direction:column;background:#17201b;color:#fff}
+  .cap-msg{margin:auto;max-width:560px;padding:24px;text-align:center;color:#cfd8d3;line-height:1.6}
+  .cap-msg code{background:rgba(255,255,255,.12);padding:1px 6px;border-radius:4px}
+  #cap-wrap{flex:1;min-height:0;display:flex;flex-direction:column} #cap-wrap[hidden]{display:none}
+  #cap-stage{flex:1;min-height:0;position:relative;display:flex;align-items:center;justify-content:center;outline:0;background:#000}
+  #cap-img{max-width:100%;max-height:100%;object-fit:contain;transition:opacity .25s}
+  #cap-img.fade{opacity:0}
+  .cap-nav{position:absolute;top:50%;transform:translateY(-50%);width:46px;height:70px;border:0;border-radius:8px;
+    background:rgba(0,0,0,.4);color:#fff;font-size:38px;cursor:pointer;line-height:1}
+  .cap-nav:hover{background:rgba(0,0,0,.65)} .cap-nav.prev{left:12px} .cap-nav.next{right:12px}
+  .cap-bar{position:absolute;left:0;right:0;bottom:0;display:flex;justify-content:space-between;align-items:flex-end;gap:12px;
+    padding:36px 18px 14px;background:linear-gradient(transparent,rgba(0,0,0,.72))}
+  #cap-title{font-size:17px;font-weight:600} #cap-date{font-size:13px;color:#cfd8d3}
+  .cap-tools{display:flex;align-items:center;gap:10px;white-space:nowrap;font-size:13px}
+  .cap-tools button{border:0;border-radius:6px;padding:6px 10px;background:rgba(255,255,255,.18);color:#fff;font:inherit;cursor:pointer}
+  .cap-tools button:hover{background:rgba(255,255,255,.3)}
+  #cap-strip{display:flex;gap:6px;overflow-x:auto;padding:8px 10px;background:#101713}
+  #cap-strip img{height:64px;width:auto;min-width:48px;border-radius:4px;opacity:.55;cursor:pointer;flex:none;border:2px solid transparent;background:#222}
+  #cap-strip img.on{opacity:1;border-color:var(--sel)} #cap-strip img:hover{opacity:.9}
+  #cap-strip .dot{width:10px;height:10px;border-radius:50%;background:#56645c;flex:none;cursor:pointer;margin:auto 2px}
+  #cap-strip .dot.on{background:var(--sel)}
+  main{flex:1;min-height:0;display:flex;position:relative}
+  #svg{flex:1;width:100%;height:100%;cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none;background:
       radial-gradient(circle at 1px 1px,#d9d4c7 1px,transparent 0) 0 0/24px 24px}
   #svg:active{cursor:grabbing}
   .edge{fill:none;stroke:var(--line);stroke-width:2}
@@ -62,29 +85,74 @@
   .chk input{width:auto}
   #toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#8b2e2e;color:#fff;padding:9px 16px;border-radius:8px;display:none;z-index:9}
   .hint{position:absolute;left:12px;bottom:10px;color:var(--muted);font-size:12px;background:rgba(255,255,255,.8);padding:4px 8px;border-radius:6px}
-  @media(max-width:760px){aside{position:absolute;right:0;top:0;bottom:0;width:88%;box-shadow:-4px 0 16px rgba(0,0,0,.2)}
-    header input{width:130px} header .hide-sm{display:none}}
+  .ctl{display:contents} #sheet{display:contents} #pclose{display:none}
+  @media(hover:none),(max-width:800px){button,select,summary{min-height:38px} .btn{padding:9px 14px}}
+  @media(max-width:800px){
+    header{flex-wrap:wrap;gap:8px;padding:8px 10px;padding-top:calc(8px + env(safe-area-inset-top))}
+    header h1{order:1} header h1 .brand{display:none} #tabs{order:2} .grow{order:3} #logout{order:4}
+    #search{order:5;flex:1 1 100%;width:100%} header .hide-sm{display:none}
+    header input,header select,header button{height:38px;font-size:16px}
+    #tabs button{font-size:14px;padding:0 12px}
+    .ctl{display:flex;position:fixed;z-index:5;left:50%;transform:translateX(-50%);bottom:calc(12px + env(safe-area-inset-bottom));
+      gap:8px;padding:6px;border-radius:12px;background:rgba(36,86,64,.94);box-shadow:0 4px 16px rgba(0,0,0,.3)}
+    .ctl{max-width:calc(100vw - 16px)} .ctl .seg button{font-size:13px;padding:0 9px} .ctl select{padding:0 4px;min-width:0}
+    .hint b,.hint .sep{display:none}
+    .hint{bottom:auto;top:8px;left:8px;right:8px;text-align:center;pointer-events:none;font-size:11px}
+    #sheet{display:none}
+    #sheet.open{display:flex;flex-direction:column;position:absolute;left:0;right:0;bottom:0;max-height:72%;z-index:7;background:#fff;
+      border-radius:16px 16px 0 0;box-shadow:0 -6px 22px rgba(0,0,0,.28)}
+    #pclose{display:block;flex:none;align-self:flex-end;margin:8px 10px 0;border:0;border-radius:8px;background:#eef5f1;color:var(--green2);
+      font:inherit;font-weight:600;padding:0 14px;cursor:pointer}
+    #sheet aside{width:auto;flex:1;min-height:0;border:0;padding:6px 16px calc(18px + env(safe-area-inset-bottom));-webkit-overflow-scrolling:touch}
+    form input,form select,form textarea{font-size:16px;padding:9px 10px}
+    #toast{bottom:auto;top:calc(70px + env(safe-area-inset-top));max-width:92vw;text-align:center}
+    .pic{width:72px;height:72px}
+    .cap-nav{width:36px;height:56px;font-size:30px} .cap-nav.prev{left:6px} .cap-nav.next{right:6px}
+    .cap-bar{padding:28px 12px 10px} #cap-title{font-size:15px} .cap-tools{gap:6px} .cap-tools button{padding:6px 8px;min-height:34px}
+    #cap-strip{padding:6px 8px calc(6px + env(safe-area-inset-bottom))} #cap-strip img{height:48px;min-width:36px}
+  }
+  @media(max-width:400px){#tabs button{padding:0 9px;font-size:13px}} @media(max-width:350px){#cap-count{display:none}}
 </style>
 </head>
 <body>
 <header>
-  <h1><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><path d="M12 21V9M12 13c-4 0-6-2-6-6 4 0 6 2 6 6zM12 15c3 0 5-2 5-5-3 0-5 2-5 5z"/></svg>Family Tree</h1>
-  <input id="search" list="plist" placeholder="Search a person…" autocomplete="off">
-  <div class="seg">
-    <button id="v-ped" class="on">Ancestors</button>
-    <button id="v-desc">Descendants</button>
+  <h1><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><path d="M12 21V9M12 13c-4 0-6-2-6-6 4 0 6 2 6 6zM12 15c3 0 5-2 5-5-3 0-5 2-5 5z"/></svg><span class="brand">Family Tree</span></h1>
+  <div class="seg" id="tabs"><button id="t-tree" class="on">Family Tree</button><button id="t-cap">Time Capsule</button></div>
+  <input id="search" class="treectl" list="plist" placeholder="Search a person…" autocomplete="off">
+  <div class="ctl treectl">
+    <div class="seg">
+      <button id="v-ped" class="on">Ancestors</button>
+      <button id="v-desc">Descendants</button>
+    </div>
+    <select id="depth" title="Generations"></select>
+    <button id="fit">Fit</button>
   </div>
-  <select id="depth" title="Generations"></select>
-  <button id="fit">Fit</button>
   <div class="grow"></div>
-  <span class="hide-sm" id="focusname"></span>
+  <span class="hide-sm treectl" id="focusname"></span>
   <button id="logout" style="display:none">Sign out</button>
 </header>
 <main>
   <svg id="svg"><defs><clipPath id="avclip"><circle cx="36" cy="33" r="20"/></clipPath></defs><g id="vp"></g></svg>
-  <div class="hint"><b id="src"></b> · Drag to pan · scroll to zoom · click a card for details · double-click to re-center the tree</div>
-  <aside id="panel"></aside>
+  <div class="hint"><b id="src"></b><span class="sep"> · </span><span id="hinttxt"></span></div>
+  <div id="sheet"><button id="pclose" aria-label="Close details">&times; Close</button><aside id="panel"></aside></div>
 </main>
+<section id="capsule">
+  <div id="cap-msg" class="cap-msg"></div>
+  <div id="cap-wrap" hidden>
+    <div id="cap-stage" tabindex="0">
+      <img id="cap-img" alt="">
+      <button class="cap-nav prev" id="cap-prev" aria-label="Previous photo">&#8249;</button>
+      <button class="cap-nav next" id="cap-next" aria-label="Next photo">&#8250;</button>
+      <div class="cap-bar">
+        <div><div id="cap-title"></div><div id="cap-date"></div></div>
+        <div class="cap-tools"><span id="cap-count"></span>
+          <button id="cap-play" title="Slideshow (space)">&#9654; Play</button>
+          <button id="cap-full" title="Full screen">&#9974;</button></div>
+      </div>
+    </div>
+    <div id="cap-strip"></div>
+  </div>
+</section>
 <datalist id="plist"></datalist><datalist id="nakl"></datalist><datalist id="gotl"></datalist>
 <input type="file" id="pfile" accept="image/*" hidden>
 <div id="toast"></div>
@@ -130,14 +198,14 @@ function card(g,p,x,y){
   S('text',{x:64,y:28,class:'nm'},a).textContent=trunc(p.name,17);
   S('text',{x:64,y:47,class:'yr'},a).textContent=years(p);
   S('title',{},a).textContent=p.name;
-  a.addEventListener('click',e=>{e.stopPropagation();select(p.id)});
+  a.addEventListener('click',e=>{e.stopPropagation(); if(moved)return; select(p.id)});
   a.addEventListener('dblclick',e=>{e.stopPropagation();setFocus(p.id)});
 }
 function placeholder(g,x,y,childId){
   const a=S('g',{class:'ph',transform:`translate(${x},${y})`},g);
   S('rect',{width:CW,height:CH,rx:10},a);
   const t=S('text',{x:CW/2,y:CH/2+5,'text-anchor':'middle'},a); t.textContent='+ Add parent';
-  a.addEventListener('click',async e=>{e.stopPropagation();await select(childId);openForm('parent');});
+  a.addEventListener('click',async e=>{e.stopPropagation(); if(moved)return; await select(childId);openForm('parent');});
 }
 const edge=(g,d,cls='edge')=>S('path',{d,class:cls},g);
 
@@ -201,17 +269,34 @@ function fitView(){
   const b=vp.getBBox(), r=svg.getBoundingClientRect(); if(!b.width) return;
   const pad=40, k=Math.min(1.1,(r.width-pad*2)/b.width,(r.height-pad*2)/b.height);
   T.k=k; T.x=(r.width-b.width*k)/2-b.x*k; T.y=(r.height-b.height*k)/2-b.y*k; applyT();
+  if(k<.5&&r.width<800){                       // a big tree on a small screen: stay readable, start at the focus person
+    T.k=.6; applyT(); const c=svg.querySelector('.card.focus')||svg.querySelector('.card');
+    if(c){const q=c.getBoundingClientRect(); T.x+=r.left+r.width/2-(q.left+q.width/2); T.y+=r.top+r.height/2-(q.top+q.height/2); applyT();}
+  }
 }
 async function setFocus(id){focus=id; await render(); await select(id,true);}
 function setView(v){view=v;$('#v-ped').classList.toggle('on',v==='pedigree');
   $('#v-desc').classList.toggle('on',v==='descendants'); depth=v==='pedigree'?+$('#depth').value:+$('#depth').value; render();}
 
 /* ---------- pan & zoom ---------- */
-let drag=null, moved=false;
-svg.addEventListener('pointerdown',e=>{moved=false;drag={x:e.clientX,y:e.clientY,tx:T.x,ty:T.y};});
-addEventListener('pointermove',e=>{if(!drag)return;const dx=e.clientX-drag.x,dy=e.clientY-drag.y;
-  if(Math.abs(dx)+Math.abs(dy)>3)moved=true; T.x=drag.tx+dx;T.y=drag.ty+dy;applyT();});
-addEventListener('pointerup',()=>{drag=null;});
+let drag=null, moved=false, pinch=null; const ptrs=new Map();
+const rel=e=>{const r=svg.getBoundingClientRect(); return {x:e.clientX-r.left,y:e.clientY-r.top};};
+function startDrag(pt){drag={x:pt.x,y:pt.y,tx:T.x,ty:T.y};}
+function startPinch(){const [a,b]=[...ptrs.values()];
+  pinch={d:Math.hypot(a.x-b.x,a.y-b.y)||1,cx:(a.x+b.x)/2,cy:(a.y+b.y)/2,tx:T.x,ty:T.y,k:T.k};}
+svg.addEventListener('pointerdown',e=>{ptrs.set(e.pointerId,rel(e));
+  if(ptrs.size===1){moved=false;startDrag(ptrs.get(e.pointerId));}
+  else if(ptrs.size===2){drag=null;moved=true;startPinch();}});
+addEventListener('pointermove',e=>{if(!ptrs.has(e.pointerId))return; const pt=rel(e); ptrs.set(e.pointerId,pt);
+  if(pinch&&ptrs.size>=2){const [a,b]=[...ptrs.values()],d=Math.hypot(a.x-b.x,a.y-b.y)||1,cx=(a.x+b.x)/2,cy=(a.y+b.y)/2;
+    const k2=Math.min(3,Math.max(.15,pinch.k*d/pinch.d)), wx=(pinch.cx-pinch.tx)/pinch.k, wy=(pinch.cy-pinch.ty)/pinch.k;
+    T.k=k2;T.x=cx-wx*k2;T.y=cy-wy*k2;applyT();return;}
+  if(!drag)return; const dx=pt.x-drag.x,dy=pt.y-drag.y;
+  if(Math.abs(dx)+Math.abs(dy)>(e.pointerType==='touch'?10:3))moved=true;
+  if(moved){T.x=drag.tx+dx;T.y=drag.ty+dy;applyT();}});
+const endPtr=e=>{ptrs.delete(e.pointerId); pinch=null; drag=null;
+  if(ptrs.size===1){startDrag([...ptrs.values()][0]);}};      // one finger left after a pinch: keep panning
+addEventListener('pointerup',endPtr); addEventListener('pointercancel',endPtr);
 svg.addEventListener('wheel',e=>{e.preventDefault();const r=svg.getBoundingClientRect(),mx=e.clientX-r.left,my=e.clientY-r.top;
   const k2=Math.min(3,Math.max(.15,T.k*(e.deltaY<0?1.1:.9)));
   T.x=mx-(mx-T.x)*k2/T.k;T.y=my-(my-T.y)*k2/T.k;T.k=k2;applyT();},{passive:false});
@@ -360,6 +445,60 @@ function openForm(kind){
   };
 }
 
+
+/* ---------- Time Capsule (photo carousel from Google Drive) ---------- */
+let treeInit=false;
+const cap={loaded:false,photos:[],thumbs:false,i:0,timer:null};
+const capUrl=(p,thumb)=>`/api/capsule/photo/${p.id}?v=${encodeURIComponent(p.version)}${thumb?'&size=thumb':''}`;
+const capMsg=h=>{$('#cap-msg').innerHTML=h;$('#cap-msg').style.display='';$('#cap-wrap').hidden=true;};
+async function capLoad(refresh){
+  capMsg('Loading photos…'); capStop();
+  try{
+    const d=await api('/api/capsule'+(refresh?'?refresh=1':''));
+    if(!d.configured) return capMsg('<h2>Time Capsule</h2>To show photos here, put them in a Google Drive folder, share that folder (Viewer) with your service account, and set <code>DRIVE_FOLDER_ID</code> on the server to the folder\'s id or link.');
+    if(!d.photos.length) return capMsg('<h2>Time Capsule</h2>No photos found in the Drive folder yet. Add JPEG, PNG, WebP or GIF images'+(d.skipped?` (${d.skipped} other image file${d.skipped>1?'s were':' was'} skipped, for example HEIC, which browsers cannot show)`:'')+'.');
+    Object.assign(cap,{photos:d.photos,thumbs:d.thumbs,i:0,loaded:true});
+    $('#cap-msg').style.display='none'; $('#cap-wrap').hidden=false; capStrip(); capShow(0);
+  }catch(e){capMsg('<h2>Time Capsule</h2>'+esc(e.message));}
+}
+function capStrip(){
+  const st=$('#cap-strip'); st.innerHTML='';
+  cap.photos.forEach((p,k)=>{
+    let e; if(cap.thumbs){e=document.createElement('img');e.loading='lazy';e.src=capUrl(p,true);e.alt=p.caption;}
+    else{e=document.createElement('span');e.className='dot';}
+    e.title=p.caption; e.dataset.k=k; e.onclick=()=>capShow(k); st.appendChild(e);});
+}
+function capShow(k){
+  const n=cap.photos.length; if(!n) return; cap.i=(k+n)%n; const p=cap.photos[cap.i], im=$('#cap-img');
+  im.classList.add('fade');
+  const next=new Image(); next.onload=next.onerror=()=>{im.src=next.src; im.alt=p.caption; im.classList.remove('fade');};
+  next.src=capUrl(p);
+  $('#cap-title').textContent=p.caption; $('#cap-date').textContent=capDate(p.date);
+  $('#cap-count').textContent=`${cap.i+1} / ${n}`;
+  document.querySelectorAll('#cap-strip [data-k]').forEach(e=>e.classList.toggle('on',+e.dataset.k===cap.i));
+  const cur=document.querySelector(`#cap-strip [data-k="${cap.i}"]`); if(cur&&cur.scrollIntoView) cur.scrollIntoView({block:'nearest',inline:'center'});
+  if(n>1){const a=new Image(); a.src=capUrl(cap.photos[(cap.i+1)%n]);}      // warm the next one
+}
+function capDate(d){ if(!d) return ''; const t=new Date(d+'T12:00:00'); return isNaN(t)?d:t.toLocaleDateString(undefined,{year:'numeric',month:'long',day:'numeric'}); }
+function capStop(){ clearInterval(cap.timer); cap.timer=null; $('#cap-play').innerHTML='&#9654; Play'; }
+function capToggle(){ if(cap.timer) return capStop(); $('#cap-play').innerHTML='&#10074;&#10074; Pause'; cap.timer=setInterval(()=>capShow(cap.i+1),5000); }
+function setTab(t){
+  const c=t==='capsule'; document.body.classList.toggle('cap',c);
+  $('#t-tree').classList.toggle('on',!c); $('#t-cap').classList.toggle('on',c);
+  if(c){ location.hash='capsule'; if(!cap.loaded) capLoad(); }
+  else{ capStop(); if(!treeInit) initTree(); else location.hash=focus?`${view}/${focus}`:''; }
+}
+$('#t-tree').onclick=()=>setTab('tree'); $('#t-cap').onclick=()=>setTab('capsule');
+$('#cap-prev').onclick=()=>{capShow(cap.i-1)}; $('#cap-next').onclick=()=>{capShow(cap.i+1)};
+$('#cap-play').onclick=capToggle;
+$('#cap-full').onclick=()=>{const st=$('#cap-stage'); document.fullscreenElement?document.exitFullscreen():st.requestFullscreen&&st.requestFullscreen();};
+document.addEventListener('keydown',e=>{ if(!document.body.classList.contains('cap')||/INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
+  if(e.key==='ArrowLeft') capShow(cap.i-1); else if(e.key==='ArrowRight') capShow(cap.i+1);
+  else if(e.key===' '){e.preventDefault();capToggle();} });
+(()=>{let x=null; const st=$('#cap-stage');
+  st.addEventListener('touchstart',e=>{x=e.touches[0].clientX;},{passive:true});
+  st.addEventListener('touchend',e=>{ if(x===null) return; const d=e.changedTouches[0].clientX-x; x=null; if(Math.abs(d)>40) capShow(cap.i+(d<0?1:-1)); });})();
+
 /* ---------- boot ---------- */
 function firstPerson(){
   const el=$('#panel'); el.classList.add('open'); el._p=null;
@@ -385,19 +524,33 @@ $('#search').addEventListener('change',e=>{const id=(e.target.value.match(/\[(\w
   ||people.find(p=>p.name.toLowerCase()===e.target.value.trim().toLowerCase())?.id;
   if(id){setFocus(id);e.target.value='';}});
 $('#v-ped').onclick=()=>setView('pedigree'); $('#v-desc').onclick=()=>setView('descendants');
-$('#depth').innerHTML=[2,3,4,5,6,8].map(n=>`<option value="${n}" ${n===4?'selected':''}>${n} generations</option>`).join('');
+const narrow=matchMedia('(max-width:800px)').matches;
+$('#depth').innerHTML=[2,3,4,5,6,8].map(n=>`<option value="${n}" ${n===4?'selected':''}>${narrow?n+' gen':n+' generations'}</option>`).join('');
 $('#depth').onchange=e=>{depth=+e.target.value;render();};
+(()=>{const sh=$('#sheet'),pn=$('#panel');
+  new MutationObserver(()=>sh.classList.toggle('open',pn.classList.contains('open'))).observe(pn,{attributes:true,attributeFilter:['class']});
+  $('#pclose').onclick=closePanel;})();
+$('#hinttxt').textContent=matchMedia('(pointer:coarse)').matches
+  ? 'Drag to pan · pinch to zoom · tap a card for details'
+  : 'Drag to pan · scroll to zoom · click a card for details · double-click to re-center the tree';
+if(!document.documentElement.requestFullscreen) $('#cap-full').style.display='none';
 $('#fit').onclick=fitView; addEventListener('resize',()=>fitView());
 $('#panel').addEventListener('click',e=>e.stopPropagation());
 (async()=>{
   try{const s=await api('/api/status'); if(s.max_photo_bytes) MAXPHOTO=Math.min(s.max_photo_bytes,250000); $('#src').textContent=s.source==='google-sheet'?'Data: Google Sheet':'Data: text file (not Google Sheet)';
     if(s.auth){const b=$('#logout'); b.style.display=''; b.title='Signed in as '+s.user;
       b.onclick=async()=>{await fetch('/logout',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}); location.replace('/login');};}}catch(e){}
-  await loadPeople(); if(!people.length) return firstPerson();
+  await loadPeople();
+  if(location.hash==='#capsule') return setTab('capsule');      // opened straight on the Time Capsule tab
+  await initTree();
+})();
+async function initTree(){
+  treeInit=true;
+  if(!people.length) return firstPerson();
   const [v,id]=location.hash.slice(1).split('/');
   if(v==='descendants'){view='descendants';$('#v-ped').classList.remove('on');$('#v-desc').classList.add('on');}
   focus=byId(id)?id:people[0].id; depth=+$('#depth').value; await render();
-})();
+}
 </script>
 </body>
 </html>
