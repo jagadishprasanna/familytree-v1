@@ -285,12 +285,13 @@ class Handler(BaseHTTPRequestHandler):
             if m := re.fullmatch(r"/api/person/([^/]+)", path):
                 p = store.update_person(m.group(1), data.get("name"), data.get("gender"),
                                         data.get("birth"), data.get("death"),
-                                        data.get("nakshatra"), data.get("gotra"))
+                                        data.get("nakshatra"), data.get("gotra"), data.get("ailments"))
                 return self._json(to_dict(p))
             if path == "/api/person":
                 p = store.add_person(data.get("name", ""), data.get("gender", ""),
                                      data.get("birth", ""), data.get("death", ""),
-                                     data.get("id", ""), data.get("nakshatra", ""), data.get("gotra", ""))
+                                     data.get("id", ""), data.get("nakshatra", ""), data.get("gotra", ""),
+                                     data.get("ailments", ""))
                 return self._json(to_dict(p), 201)
             if path == "/api/marriage":
                 store.add_marriage(data["a"], data["b"], data.get("start", ""), data.get("end", ""))
