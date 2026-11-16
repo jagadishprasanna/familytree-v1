@@ -459,7 +459,8 @@ async function capLoad(refresh){
     if(!d.photos.length) return capMsg('<h2>Time Capsule</h2>No photos found in the Drive folder yet. Add JPEG, PNG, WebP or GIF images'+(d.skipped?` (${d.skipped} other image file${d.skipped>1?'s were':' was'} skipped, for example HEIC, which browsers cannot show)`:'')+'.');
     Object.assign(cap,{photos:d.photos,thumbs:d.thumbs,i:0,loaded:true});
     $('#cap-msg').style.display='none'; $('#cap-wrap').hidden=false; capStrip(); capShow(0);
-  }catch(e){capMsg('<h2>Time Capsule</h2>'+esc(e.message));}
+  }catch(e){const m=e.message||'';
+    capMsg('<h2>Time Capsule</h2>'+esc(m)+(m==='not found'?'<br><br>The server is running an older version of the app that has no Time Capsule. Deploy <code>drive_photos.py</code> and the latest <code>web.py</code>, then reload.':''));}
 }
 function capStrip(){
   const st=$('#cap-strip'); st.innerHTML='';
