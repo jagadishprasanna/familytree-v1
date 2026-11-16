@@ -1,8 +1,15 @@
-"""Time Capsule photos from a Google Drive folder (read-only).
+"""Time Capsule photos in a Google Drive folder: show, add, edit and delete.
 
 Setup: put the photos in one Drive folder, share that folder with the same service account
 that the Google Sheet uses (Viewer is enough), and set DRIVE_FOLDER_ID (the folder id or its URL).
 The Google Drive API must be enabled in the Google Cloud project that owns the service account.
+
+Adding, editing and deleting photos writes to Drive, and a Google *service account* has no storage space of its
+own, so it cannot create files in an ordinary (My Drive) folder. Writes therefore use YOUR Google account through a
+one-time sign-in (run drive_authorize.py once, then set DRIVE_OAUTH_CLIENT_ID, DRIVE_OAUTH_CLIENT_SECRET and
+DRIVE_OAUTH_REFRESH_TOKEN). The service account keeps doing the reading. If the folder is inside a Google Workspace
+Shared Drive, the service account can write too (give it Content manager) and no sign-in is needed.
+Deleted photos go to the Drive trash (recoverable for 30 days). Set CAPSULE_READONLY=1 to switch editing off.
 
 Optional environment variables:
     CAPSULE_LIST_SECONDS   how long the folder listing is cached (default 60)
@@ -25,6 +32,10 @@ from pathlib import Path
 
 API = "https://www.googleapis.com/drive/v3/files"
 SCOPE = "https://www.googleapis.com/auth/drive.readonly"
+WRITE_SCOPE = "https://www.googleapis.com/auth/drive"          # needed to trash photos added by other people/apps
+UPLOAD_URL = "https://www.googleapis.com/upload/drive/v3/files"
+TOKEN_URI = "https://oauth2.googleapis.com/token"
+MAX_UPLOAD = 25 * 1024 * 1024
 SHOWABLE = {"image/jpeg", "image/png", "image/webp", "image/gif"}   # what every browser can display
 EXT_MIME = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".jpe": "image/jpeg", ".png": "image/png",
             ".webp": "image/webp", ".gif": "image/gif"}
@@ -75,7 +86,15 @@ def clean_caption(name: str) -> str:
     return " ".join(stem.replace("_", " ").replace("-", " ").split())
 
 
+def valid_date(text: str) -> bool:
+    m = re.fullmatch(r"(\d{4})-(\d\d)-(\d\d)", text or "")
+    return bool(m) and 1 <= int(m.group(2)) <= 12 and 1 <= int(m.group(3)) <= 31 and int(m.group(1)) >= 1000
+
+
 def _date(item: dict) -> str:
+    chosen = (item.get("properties") or {}).get("capsuleDate", "")      # a date someone set in the app
+    if valid_date(chosen):
+        return chosen
     taken = (item.get("imageMediaMetadata") or {}).get("time", "")      # "2019:07:04 12:00:00"
     m = re.match(r"(\d{4}):(\d\d):(\d\d)", taken)
     if m:
@@ -85,8 +104,9 @@ def _date(item: dict) -> str:
 
 class DrivePhotos:
     def __init__(self, session, folder_id: str, email: str = "", list_ttl: float = 60.0,
-                 cache_bytes: int = 48 * 1024 * 1024, max_photos: int = 500):
+                 cache_bytes: int = 48 * 1024 * 1024, max_photos: int = 500, writer=None, writer_kind: str = ""):
         self.session, self.folder, self.email = session, folder_id, email
+        self.writer, self.writer_kind = writer, writer_kind        # writer: session allowed to change Drive, or None
         self.list_ttl, self.cache_bytes, self.max_photos = list_ttl, cache_bytes, max_photos
         self.can_resize = Image is not None
         self._lock = threading.RLock()
@@ -123,28 +143,64 @@ class DrivePhotos:
             raise DriveError("Install google-auth and requests: pip install gspread") from e
         except Exception as e:
             raise DriveError(f"Could not load Google credentials: {type(e).__name__}") from e
+        writer, kind = None, ""
+        if os.environ.get("CAPSULE_READONLY", "").strip().lower() not in ("1", "true", "yes", "on"):
+            cid, secret, token = (os.environ.get(k, "").strip() for k in
+                                  ("DRIVE_OAUTH_CLIENT_ID", "DRIVE_OAUTH_CLIENT_SECRET", "DRIVE_OAUTH_REFRESH_TOKEN"))
+            try:
+                if cid and secret and token:
+                    from google.oauth2.credentials import Credentials as UserCredentials
+                    writer = AuthorizedSession(UserCredentials(None, refresh_token=token, client_id=cid,
+                                                               client_secret=secret, token_uri=TOKEN_URI,
+                                                               scopes=[WRITE_SCOPE]))
+                    kind = "oauth"
+                else:                                                   # works only inside a Shared Drive
+                    writer = AuthorizedSession(Credentials.from_service_account_info(info, scopes=[WRITE_SCOPE]))
+                    kind = "service"
+            except Exception as e:
+                raise DriveError(f"Could not set up the Drive sign-in used for uploads: {type(e).__name__}") from e
         return cls(AuthorizedSession(creds), folder, info.get("client_email", ""),
                    float(os.environ.get("CAPSULE_LIST_SECONDS", "60")),
                    int(float(os.environ.get("CAPSULE_CACHE_MB", "48")) * 1024 * 1024),
-                   int(os.environ.get("CAPSULE_MAX_PHOTOS", "500")))
+                   int(os.environ.get("CAPSULE_MAX_PHOTOS", "500")), writer, kind)
 
     def _get(self, url: str, params: dict):
+        return self._call(self.session, "get", url, params=params, timeout=30)
+
+    def _call(self, session, method: str, url: str, writing: bool = False, **kw):
         try:
-            r = self.session.get(url, params=params, timeout=30)
+            r = getattr(session, method)(url, **kw)
         except Exception as e:
             raise DriveError(f"Could not reach Google Drive ({type(e).__name__})") from e
-        if r.status_code == 200:
+        if r.status_code in (200, 201, 204):
             return r
         try:
-            msg = r.json()["error"]["message"]
+            err = r.json()["error"]
+            msg = err.get("message", "") if isinstance(err, dict) else str(err)
+            reason = (err.get("errors") or [{}])[0].get("reason", "") if isinstance(err, dict) else ""
+            if not reason and isinstance(r.json(), dict):
+                reason = str(r.json().get("error", ""))         # OAuth token errors: {"error": "invalid_grant"}
         except Exception:
-            msg = f"HTTP {r.status_code}"
-        if r.status_code == 404:
-            raise DriveError(f"Drive folder not found. Check DRIVE_FOLDER_ID and share the folder "
-                             f"(Viewer) with {self.email or 'the service account'}.")
+            msg, reason = f"HTTP {r.status_code}", ""
+        who = self.email or "the service account"
+        if reason == "storageQuotaExceeded":
+            raise DriveError("Google would not store the photo: a service account has no storage space, so it can "
+                             "only upload into a Shared Drive. For a normal folder, set up the one-time sign-in "
+                             "(see README, 'Adding and deleting photos').")
+        if reason in ("invalid_grant", "invalid_client", "unauthorized_client") or "invalid_grant" in msg:
+            raise DriveError("The Google sign-in used for uploads has expired or is wrong. Run drive_authorize.py "
+                             "again and update DRIVE_OAUTH_REFRESH_TOKEN. (Tip: set the OAuth consent screen to "
+                             "'In production' so it does not expire after 7 days.)")
         if r.status_code == 403 and ("has not been used" in msg or "disabled" in msg):
-            raise DriveError("The Google Drive API is not enabled for the service account's Google Cloud "
-                             "project. Enable 'Google Drive API' there, wait a minute, and reload.")
+            raise DriveError("The Google Drive API is not enabled for the Google Cloud project. Enable "
+                             "'Google Drive API' there, wait a minute, and try again.")
+        if writing and r.status_code in (401, 403):
+            raise DriveError("Google says this sign-in is not allowed to change the folder. "
+                             + (f"Share the folder with {who} as Editor, or " if self.writer_kind == "service" else "Make sure the account you signed in with owns or can edit the folder, or ")
+                             + "check CAPSULE_READONLY.")
+        if r.status_code == 404:
+            raise DriveError("That photo no longer exists in Drive." if writing else
+                             f"Drive folder not found. Check DRIVE_FOLDER_ID and share the folder (Viewer) with {who}.")
         raise DriveError(f"Google Drive said: {msg}")
 
     # ---- listing
@@ -163,7 +219,7 @@ class DrivePhotos:
                 while True:
                     params = {
                         "q": f"'{fid}' in parents and trashed=false",
-                        "fields": "nextPageToken,files(id,name,mimeType,description,modifiedTime,"
+                        "fields": "nextPageToken,files(id,name,mimeType,description,modifiedTime,properties,"
                                   "imageMediaMetadata(time))",
                         "pageSize": 200, "supportsAllDrives": "true", "includeItemsFromAllDrives": "true",
                     }
@@ -185,7 +241,8 @@ class DrivePhotos:
                             continue
                         items.append({"id": f["id"], "name": name,
                                       "caption": (f.get("description") or "").strip() or clean_caption(name),
-                                      "date": _date(f), "version": f.get("modifiedTime", ""), "mime": shown})
+                                      "date": _date(f), "version": f.get("modifiedTime", ""), "mime": shown,
+                                      "described": bool((f.get("description") or "").strip())})
                     token = data.get("nextPageToken")
                     if not token:
                         break
@@ -256,3 +313,81 @@ class DrivePhotos:
         while self._cached_bytes > self.cache_bytes and len(self._cache) > 1:
             _, (_, b) = self._cache.popitem(last=False)
             self._cached_bytes -= len(b)
+
+    # ---- changing the folder (needs a writer)
+    @property
+    def can_edit(self) -> bool:
+        return self.writer is not None
+
+    def _need_writer(self):
+        if self.writer is None:
+            raise DriveError("Adding and deleting photos is switched off (CAPSULE_READONLY is set).")
+
+    def _forget(self, file_id: str) -> None:
+        for key in [k for k in self._cache if k[0] == file_id]:
+            self._cached_bytes -= len(self._cache.pop(key)[1])
+
+    def _item(self, file_id: str) -> dict:
+        self.listing(force=True)
+        for it in self._listing:
+            if it["id"] == file_id:
+                return it
+        return {"id": file_id}
+
+    def upload(self, name: str, data: bytes, modified: str = "", caption: str = "", date: str = "") -> dict:
+        """Add a photo to the folder. The file contents are checked, not just the name."""
+        self._need_writer()
+        mime = sniff(data)
+        if not mime:
+            raise DriveError("That file is not a JPEG, PNG, WebP or GIF picture.")
+        if len(data) > MAX_UPLOAD:
+            raise DriveError("That photo is larger than 25 MB.")
+        ext = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp", "image/gif": ".gif"}[mime]
+        base = re.sub(r"[^\w .()-]", "_", os.path.basename((name or "photo").replace("\\", "/"))).strip(" .") or "photo"
+        stem = os.path.splitext(base)[0] or "photo"
+        meta: dict = {"name": stem[:120] + ext, "parents": [self.folder]}
+        if caption.strip():
+            meta["description"] = " ".join(caption.split())[:500]
+        if valid_date(date):
+            meta["properties"] = {"capsuleDate": date}
+        if re.fullmatch(r"\d{4}-\d\d-\d\dT[\d:.]+Z", modified or ""):
+            meta["modifiedTime"] = modified
+        boundary = "capsule" + os.urandom(8).hex()
+        body = (f"--{boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n{json.dumps(meta)}\r\n"
+                f"--{boundary}\r\nContent-Type: {mime}\r\n\r\n").encode() + data + f"\r\n--{boundary}--".encode()
+        with self._lock:
+            r = self._call(self.writer, "post", UPLOAD_URL, writing=True, timeout=180, data=body,
+                           headers={"Content-Type": f"multipart/related; boundary={boundary}"},
+                           params={"uploadType": "multipart", "supportsAllDrives": "true", "fields": "id"})
+            return self._item(r.json()["id"])
+
+    def _must_be_listed(self, file_id: str) -> None:
+        if file_id not in {x["id"] for x in self.listing(force=True)}:
+            raise KeyError(file_id)                         # only photos from this folder can be changed
+
+    def update(self, file_id: str, caption: str | None = None, date: str | None = None) -> dict:
+        self._need_writer()
+        body: dict = {}
+        if caption is not None:
+            body["description"] = " ".join(caption.split())[:500]
+        if date is not None:
+            if date and not valid_date(date):
+                raise DriveError("The date must look like 2001-05-11.")
+            body["properties"] = {"capsuleDate": date or None}      # null removes it
+        with self._lock:
+            self._must_be_listed(file_id)
+            if body:
+                self._call(self.writer, "patch", f"{API}/{file_id}", writing=True, timeout=30, json=body,
+                           params={"supportsAllDrives": "true", "fields": "id"})
+                self._forget(file_id)
+            return self._item(file_id)
+
+    def trash(self, file_id: str) -> None:
+        """Move a photo to the Drive trash (recoverable there for 30 days)."""
+        self._need_writer()
+        with self._lock:
+            self._must_be_listed(file_id)
+            self._call(self.writer, "patch", f"{API}/{file_id}", writing=True, timeout=30, json={"trashed": True},
+                       params={"supportsAllDrives": "true", "fields": "id"})
+            self._forget(file_id)
+            self.listing(force=True)
