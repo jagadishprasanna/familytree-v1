@@ -26,6 +26,32 @@ from pathlib import Path
 API = "https://www.googleapis.com/drive/v3/files"
 SCOPE = "https://www.googleapis.com/auth/drive.readonly"
 SHOWABLE = {"image/jpeg", "image/png", "image/webp", "image/gif"}   # what every browser can display
+EXT_MIME = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".jpe": "image/jpeg", ".png": "image/png",
+            ".webp": "image/webp", ".gif": "image/gif"}
+FOLDER_MIME = "application/vnd.google-apps.folder"
+MAX_FOLDERS = 60                       # subfolders searched (photos inside them are included)
+
+
+def photo_mime(name: str, mime: str) -> str | None:
+    """The image type to show for a Drive file, or None. Trusts the file name too, because files
+    uploaded by scripts or sync tools are often labelled application/octet-stream."""
+    if mime in SHOWABLE:
+        return mime
+    if mime.startswith("application/vnd.google-apps."):
+        return None
+    return EXT_MIME.get(os.path.splitext(name.lower())[1])
+
+
+def sniff(raw: bytes) -> str | None:
+    if raw[:3] == b"\xff\xd8\xff":
+        return "image/jpeg"
+    if raw[:8] == b"\x89PNG\r\n\x1a\n":
+        return "image/png"
+    if raw[:4] == b"GIF8":
+        return "image/gif"
+    if raw[:4] == b"RIFF" and raw[8:12] == b"WEBP":
+        return "image/webp"
+    return None
 MAX_DOWNLOAD = 40 * 1024 * 1024
 FULL_DIM, THUMB_DIM = 1600, 200
 
@@ -66,6 +92,8 @@ class DrivePhotos:
         self._lock = threading.RLock()
         self._listing: list[dict] = []
         self._skipped = 0
+        self._other: list[str] = []
+        self._seen = 0
         self._listed_at = 0.0
         self._cache: OrderedDict[tuple[str, str], tuple[str, bytes]] = OrderedDict()
         self._cached_bytes = 0
@@ -124,35 +152,60 @@ class DrivePhotos:
         with self._lock:
             if not force and self._listed_at and time.monotonic() - self._listed_at < self.list_ttl:
                 return self._listing
-            items, token, skipped = [], None, 0
-            while True:
-                params = {
-                    "q": f"'{self.folder}' in parents and trashed=false and mimeType contains 'image/'",
-                    "fields": "nextPageToken,files(id,name,mimeType,description,modifiedTime,"
-                              "imageMediaMetadata(time))",
-                    "pageSize": 200, "supportsAllDrives": "true", "includeItemsFromAllDrives": "true",
-                }
-                if token:
-                    params["pageToken"] = token
-                data = self._get(API, params).json()
-                for f in data.get("files", []):
-                    if f.get("mimeType") not in SHOWABLE:
-                        skipped += 1                    # e.g. HEIC: browsers cannot display it
-                        continue
-                    items.append({"id": f["id"], "name": f.get("name", ""),
-                                  "caption": (f.get("description") or "").strip() or clean_caption(f.get("name", "")),
-                                  "date": _date(f), "version": f.get("modifiedTime", "")})
-                token = data.get("nextPageToken")
-                if not token:
-                    break
+            items, skipped, other, seen = [], 0, [], 0
+            todo, done = [self.folder], set()
+            while todo and len(done) < MAX_FOLDERS:
+                fid = todo.pop(0)
+                if fid in done:
+                    continue
+                done.add(fid)
+                token = None
+                while True:
+                    params = {
+                        "q": f"'{fid}' in parents and trashed=false",
+                        "fields": "nextPageToken,files(id,name,mimeType,description,modifiedTime,"
+                                  "imageMediaMetadata(time))",
+                        "pageSize": 200, "supportsAllDrives": "true", "includeItemsFromAllDrives": "true",
+                    }
+                    if token:
+                        params["pageToken"] = token
+                    data = self._get(API, params).json()
+                    for f in data.get("files", []):
+                        name, mime = f.get("name", ""), f.get("mimeType", "")
+                        if mime == FOLDER_MIME:
+                            todo.append(f["id"])
+                            continue
+                        seen += 1
+                        shown = photo_mime(name, mime)
+                        if not shown:
+                            if mime.startswith("image/"):
+                                skipped += 1            # e.g. HEIC: browsers cannot display it
+                            elif len(other) < 8:
+                                other.append(f"{name} ({mime or 'unknown type'})")
+                            continue
+                        items.append({"id": f["id"], "name": name,
+                                      "caption": (f.get("description") or "").strip() or clean_caption(name),
+                                      "date": _date(f), "version": f.get("modifiedTime", ""), "mime": shown})
+                    token = data.get("nextPageToken")
+                    if not token:
+                        break
             items.sort(key=lambda x: (x["date"] or "9999", x["name"].lower()))
             self._listing, self._skipped = items[:self.max_photos], skipped
+            self._other, self._seen = other, seen
             self._listed_at = time.monotonic()
             return self._listing
 
     @property
     def skipped(self) -> int:
         return self._skipped
+
+    @property
+    def other(self) -> list[str]:
+        return self._other          # names of files that are not photos (for the 'nothing found' message)
+
+    @property
+    def seen(self) -> int:
+        return self._seen
 
     # ---- photos
     def _resize(self, raw: bytes, mime: str) -> dict[str, tuple[str, bytes]]:
@@ -191,8 +244,7 @@ class DrivePhotos:
             raw = r.content
             if len(raw) > MAX_DOWNLOAD:
                 raise DriveError("That photo is larger than 40 MB.")
-            mime = next((x for x in SHOWABLE if x == r.headers.get("Content-Type", "").split(";")[0]), None) \
-                or ("image/png" if raw[:8] == b"\x89PNG\r\n\x1a\n" else "image/jpeg")
+            mime = sniff(raw) or known[file_id].get("mime") or "image/jpeg"
             made = self._resize(raw, mime)
             for k, v in made.items():
                 self._remember((file_id, f"{ver}:{k}"), v)

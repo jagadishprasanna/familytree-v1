@@ -456,7 +456,13 @@ async function capLoad(refresh){
   try{
     const d=await api('/api/capsule'+(refresh?'?refresh=1':''));
     if(!d.configured) return capMsg('<h2>Time Capsule</h2>To show photos here, put them in a Google Drive folder, share that folder (Viewer) with your service account, and set <code>DRIVE_FOLDER_ID</code> on the server to the folder\'s id or link.');
-    if(!d.photos.length) return capMsg('<h2>Time Capsule</h2>No photos found in the Drive folder yet. Add JPEG, PNG, WebP or GIF images'+(d.skipped?` (${d.skipped} other image file${d.skipped>1?'s were':' was'} skipped, for example HEIC, which browsers cannot show)`:'')+'.');
+    if(!d.photos.length){
+      let why = d.seen===0 ? 'The app can open the folder, but it contains no files. If your photos are somewhere else, move them into the shared folder (subfolders are fine), or share the folder that really holds them.'
+        : `The app can open the folder and sees ${d.seen} file${d.seen>1?'s':''}, but none are photos it can show (JPEG, PNG, WebP or GIF).`;
+      if(d.skipped) why+=` ${d.skipped} image file${d.skipped>1?'s were':' was'} skipped, for example HEIC, which browsers cannot show.`;
+      if(d.other&&d.other.length) why+=`<br><br>Files seen: ${d.other.map(esc).join(', ')}`;
+      return capMsg('<h2>Time Capsule</h2>'+why);
+    }
     Object.assign(cap,{photos:d.photos,thumbs:d.thumbs,i:0,loaded:true});
     $('#cap-msg').style.display='none'; $('#cap-wrap').hidden=false; capStrip(); capShow(0);
   }catch(e){const m=e.message||'';

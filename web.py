@@ -258,7 +258,7 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json({"configured": False, "photos": [], "thumbs": False})
                 photos = cap.listing(force=q.get("refresh") == "1")
                 return self._json({"configured": True, "photos": photos, "thumbs": cap.can_resize,
-                                   "skipped": cap.skipped})
+                                   "skipped": cap.skipped, "seen": cap.seen, "other": cap.other})
             if m := re.fullmatch(r"/api/capsule/photo/([\w-]+)", u.path):
                 cap = capsule_client()
                 if cap is None:
