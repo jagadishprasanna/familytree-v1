@@ -26,6 +26,7 @@ class Person:
     death: str = ""
     nakshatra: str = ""   # birth star (e.g. Rohini)
     gotra: str = ""       # lineage (e.g. Bharadwaja)
+    ailments: str = ""    # free text
     photo: str = ""   # version token of the photo, "" when there is none
 
     def label(self) -> str:
@@ -117,9 +118,9 @@ class FamilyStore:
                         raise FamilyError(f"{where}: PERSON needs id and name")
                     if f[0] in people:
                         raise FamilyError(f"{where}: duplicate person id {f[0]}")
-                    f = (f + [""] * 7)[:7]          # older 5-column rows still load
+                    f = (f + [""] * 8)[:8]          # older 5-column rows still load
                     people[f[0]] = Person(f[0], f[1], f[2].upper(), f[3], f[4],
-                                          nakshatra=f[5], gotra=f[6])
+                                          nakshatra=f[5], gotra=f[6], ailments=f[7])
                 elif kind == "MARRIED":
                     if len(f) < 2:
                         raise FamilyError(f"{where}: MARRIED needs two ids")
@@ -155,15 +156,17 @@ class FamilyStore:
 
     # ---------------------------------------------------------------- writes
     MAX_TEXT = 80   # longest allowed name / nakshatra / gotra
+    MAX_LONG = 1000  # longest allowed ailments text
 
     @classmethod
     def _clean_fields(cls, name: str, gender: str, birth: str, death: str,
-                      nakshatra: str = "", gotra: str = "") -> tuple[str, str, str, str, str, str]:
+                      nakshatra: str = "", gotra: str = "", ailments: str = "") -> tuple[str, str, str, str, str, str, str]:
         name, gender, birth, death = name.strip(), gender.strip().upper(), birth.strip(), death.strip()
         nakshatra, gotra = " ".join(nakshatra.split()), " ".join(gotra.split())   # tidy spacing
+        ailments = " ".join(ailments.split())
         if not name:
             raise FamilyError("name is required")
-        for v in (name, gender, birth, death, nakshatra, gotra):
+        for v in (name, gender, birth, death, nakshatra, gotra, ailments):
             if "|" in v or "\n" in v or "\r" in v:
                 raise FamilyError("'|' and newlines are not allowed in values")
         if gender not in ("", "M", "F", "O"):
@@ -171,38 +174,43 @@ class FamilyStore:
         for label, v in (("Name", name), ("Nakshatra", nakshatra), ("Gotra", gotra)):
             if len(v) > cls.MAX_TEXT:
                 raise FamilyError(f"{label} must be {cls.MAX_TEXT} characters or fewer")
-        return name, gender, birth, death, nakshatra, gotra
+        if len(ailments) > cls.MAX_LONG:
+            raise FamilyError(f"Ailments must be {cls.MAX_LONG} characters or fewer")
+        return name, gender, birth, death, nakshatra, gotra, ailments
 
     def add_person(self, name: str, gender: str = "", birth: str = "",
-                   death: str = "", person_id: str = "", nakshatra: str = "", gotra: str = "") -> Person:
+                   death: str = "", person_id: str = "", nakshatra: str = "", gotra: str = "",
+                   ailments: str = "") -> Person:
         with self._lock:
             self._load()
-            name, gender, birth, death, nakshatra, gotra = self._clean_fields(
-                name, gender, birth, death, nakshatra, gotra)
+            name, gender, birth, death, nakshatra, gotra, ailments = self._clean_fields(
+                name, gender, birth, death, nakshatra, gotra, ailments)
             if "|" in person_id or "\n" in person_id:
                 raise FamilyError("'|' and newlines are not allowed in values")
             pid = person_id.strip() or self._next_id()
             if pid in self.people:
                 raise FamilyError(f"person id {pid} already exists")
-            self.backend.add_person([pid, name, gender, birth, death, nakshatra, gotra])
+            self.backend.add_person([pid, name, gender, birth, death, nakshatra, gotra, ailments])
             self._load(force=True)
             return self.people[pid]
 
     def update_person(self, person_id: str, name: str | None = None, gender: str | None = None,
                       birth: str | None = None, death: str | None = None,
-                      nakshatra: str | None = None, gotra: str | None = None) -> Person:
+                      nakshatra: str | None = None, gotra: str | None = None,
+                      ailments: str | None = None) -> Person:
         """Change a person's details. None = leave unchanged; "" = clear (not for name)."""
         with self._lock:
             self._load()
             cur = self._need(person_id)
-            name, gender, birth, death, nakshatra, gotra = self._clean_fields(
+            name, gender, birth, death, nakshatra, gotra, ailments = self._clean_fields(
                 cur.name if name is None else name,
                 cur.gender if gender is None else gender,
                 cur.birth if birth is None else birth,
                 cur.death if death is None else death,
                 cur.nakshatra if nakshatra is None else nakshatra,
-                cur.gotra if gotra is None else gotra)
-            self.backend.update_person([person_id, name, gender, birth, death, nakshatra, gotra])
+                cur.gotra if gotra is None else gotra,
+                cur.ailments if ailments is None else ailments)
+            self.backend.update_person([person_id, name, gender, birth, death, nakshatra, gotra, ailments])
             self._load(force=True)
             return self.people[person_id]
 
