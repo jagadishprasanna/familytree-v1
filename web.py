@@ -30,10 +30,20 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+from drive_photos import DriveError, DrivePhotos, parse_folder_id
 from family_store import FamilyError, FamilyStore, open_store, to_dict
 
 WEB_DIR = Path(__file__).with_name("web")
 store: FamilyStore
+CAPSULE: dict = {"client": None, "tried": False}   # Time Capsule: photos from a Google Drive folder
+
+
+def capsule_client() -> DrivePhotos | None:
+    """Created on first use so a Drive problem never stops the family tree from starting."""
+    if not CAPSULE["tried"]:
+        CAPSULE["client"] = DrivePhotos.from_env()    # a DriveError here is retried on the next request
+        CAPSULE["tried"] = True
+    return CAPSULE["client"]
 
 # ------------------------------------------------------------------- auth
 MAX_BODY = 12 * 1024 * 1024   # largest request body accepted
@@ -242,6 +252,22 @@ class Handler(BaseHTTPRequestHandler):
                     return self._error("no photo", 404)
                 return self._send(200, got[1], got[0],
                                   [("Cache-Control", "private, max-age=86400")])  # URL carries ?v=<version>
+            if u.path == "/api/capsule":
+                cap = capsule_client()
+                if cap is None:
+                    return self._json({"configured": False, "photos": [], "thumbs": False})
+                photos = cap.listing(force=q.get("refresh") == "1")
+                return self._json({"configured": True, "photos": photos, "thumbs": cap.can_resize,
+                                   "skipped": cap.skipped})
+            if m := re.fullmatch(r"/api/capsule/photo/([\w-]+)", u.path):
+                cap = capsule_client()
+                if cap is None:
+                    return self._error("Time Capsule is not set up", 404)
+                try:
+                    mime, data = cap.photo(m.group(1), thumb=q.get("size") == "thumb")
+                except KeyError:
+                    return self._error("no such photo", 404)
+                return self._send(200, data, mime, [("Cache-Control", "private, max-age=86400")])
             if u.path == "/api/people":
                 store._load()
                 return self._json([to_dict(p) for p in store.people.values()])
@@ -254,6 +280,9 @@ class Handler(BaseHTTPRequestHandler):
             if u.path == "/api/relationship":
                 return self._json({"text": store.relationship(q["a"], q["b"])})
             return self._error("not found", 404)
+        except DriveError as e:
+            print(f"Time Capsule error: {e}", flush=True)
+            return self._error(str(e), 502)
         except (FamilyError, KeyError, ValueError) as e:
             return self._error(str(e))
         except Exception as e:  # never drop the connection (Render would show a 502)
@@ -284,12 +313,14 @@ class Handler(BaseHTTPRequestHandler):
             data = json.loads(raw or b"{}")
             if m := re.fullmatch(r"/api/person/([^/]+)", path):
                 p = store.update_person(m.group(1), data.get("name"), data.get("gender"),
-                                        data.get("birth"), data.get("death"))
+                                        data.get("birth"), data.get("death"),
+                                        data.get("nakshatra"), data.get("gotra"), data.get("ailments"))
                 return self._json(to_dict(p))
             if path == "/api/person":
                 p = store.add_person(data.get("name", ""), data.get("gender", ""),
                                      data.get("birth", ""), data.get("death", ""),
-                                     data.get("id", ""))
+                                     data.get("id", ""), data.get("nakshatra", ""), data.get("gotra", ""),
+                                     data.get("ailments", ""))
                 return self._json(to_dict(p), 201)
             if path == "/api/marriage":
                 store.add_marriage(data["a"], data["b"], data.get("start", ""), data.get("end", ""))
@@ -322,6 +353,9 @@ def main() -> None:
     else:
         print("WARNING: Login is OFF. Set APP_USERNAME and APP_PASSWORD before exposing this publicly.",
               flush=True)
+    folder = os.environ.get("DRIVE_FOLDER_ID", "").strip()
+    print("Time Capsule: " + (f"Drive folder {parse_folder_id(folder)}" if folder
+                              else "OFF (set DRIVE_FOLDER_ID to turn it on)"), flush=True)
     ThreadingHTTPServer((a.host, a.port), Handler).serve_forever()
 
 
