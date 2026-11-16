@@ -30,12 +30,73 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+from chat_agent import ChatAgent, ChatError
 from drive_photos import DriveError, DrivePhotos, parse_folder_id
+from photo_notes import MAX_PEOPLE, clean_desc, open_notes
 from family_store import FamilyError, FamilyStore, open_store, to_dict
 
 WEB_DIR = Path(__file__).with_name("web")
 store: FamilyStore
 CAPSULE: dict = {"client": None, "tried": False}   # Time Capsule: photos from a Google Drive folder
+
+
+CHAT: dict = {"agent": None, "tried": False}       # the "Ask" tab: a tool-using assistant over the family data
+CHAT_HITS: dict[str, list[float]] = {}                # user -> times of recent questions
+CHAT_LOCK = threading.Lock()
+
+
+NOTES: dict = {"for": None, "obj": None}              # photo descriptions + tagged people, kept beside the family data
+
+
+def photo_notes():
+    if NOTES["for"] is not store:
+        NOTES.update({"for": store, "obj": open_notes(store.backend)})
+    return NOTES["obj"]
+
+
+def with_notes(photos: list[dict]) -> list[dict]:
+    """Photos plus their description ("about") and tagged people. Never breaks the gallery if notes can't be read."""
+    try:
+        notes = photo_notes().all()
+        store._load()
+    except Exception as e:
+        print(f"Photo notes unavailable: {e}", flush=True)
+        notes = {}
+    out = []
+    for p in photos:
+        n = notes.get(p["id"], {})
+        ppl = [{"id": i, "name": store.people[i].name} for i in n.get("people", []) if i in store.people]
+        out.append({**p, "about": n.get("description", ""), "people": ppl})
+    return out
+
+
+def _photos_for_chat() -> list[dict]:
+    try:
+        cap = capsule_client()
+        return with_notes(cap.listing()) if cap else []
+    except DriveError:
+        return []
+
+
+def chat_agent() -> ChatAgent | None:
+    if not CHAT["tried"]:
+        CHAT["agent"] = ChatAgent.from_env(store, _photos_for_chat)
+        CHAT["tried"] = True
+    return CHAT["agent"]
+
+
+def chat_allowed(user: str, now: float | None = None) -> bool:
+    """At most CHAT_PER_HOUR questions per signed-in user per hour (protects the API bill)."""
+    limit = int(os.environ.get("CHAT_PER_HOUR", "30") or 30)
+    now = time.time() if now is None else now
+    with CHAT_LOCK:
+        hits = [t for t in CHAT_HITS.get(user, []) if now - t < 3600]
+        if len(hits) >= limit:
+            CHAT_HITS[user] = hits
+            return False
+        hits.append(now)
+        CHAT_HITS[user] = hits
+        return True
 
 
 def capsule_client() -> DrivePhotos | None:
@@ -252,13 +313,18 @@ class Handler(BaseHTTPRequestHandler):
                     return self._error("no photo", 404)
                 return self._send(200, got[1], got[0],
                                   [("Cache-Control", "private, max-age=86400")])  # URL carries ?v=<version>
+            if u.path == "/api/chat":
+                ag = chat_agent()
+                return self._json({"configured": ag is not None, "model": ag.model if ag else "",
+                                   "health": bool(ag and ag.share_health)})
             if u.path == "/api/capsule":
                 cap = capsule_client()
                 if cap is None:
-                    return self._json({"configured": False, "photos": [], "thumbs": False})
-                photos = cap.listing(force=q.get("refresh") == "1")
+                    return self._json({"configured": False, "photos": [], "thumbs": False, "canEdit": False})
+                photos = with_notes(cap.listing(force=q.get("refresh") == "1"))
                 return self._json({"configured": True, "photos": photos, "thumbs": cap.can_resize,
-                                   "skipped": cap.skipped, "seen": cap.seen, "other": cap.other})
+                                   "skipped": cap.skipped, "seen": cap.seen, "other": cap.other,
+                                   "canEdit": cap.can_edit, "oauth": cap.writer_kind == "oauth"})
             if m := re.fullmatch(r"/api/capsule/photo/([\w-]+)", u.path):
                 cap = capsule_client()
                 if cap is None:
@@ -283,8 +349,13 @@ class Handler(BaseHTTPRequestHandler):
         except DriveError as e:
             print(f"Time Capsule error: {e}", flush=True)
             return self._error(str(e), 502)
+        except ChatError as e:
+            print(f"Chat error: {e}", flush=True)
+            return self._error(str(e), e.status)
         except (FamilyError, KeyError, ValueError) as e:
             return self._error(str(e))
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+            return                                   # the browser went away (reload, closed tab)
         except Exception as e:  # never drop the connection (Render would show a 502)
             return self._error(f"server error: {type(e).__name__}: {e}", 500)
 
@@ -306,11 +377,59 @@ class Handler(BaseHTTPRequestHandler):
                 return self._error("not logged in", 401)
             if m := re.fullmatch(r"/api/photo/([^/]+)", path):          # body = raw image bytes
                 return self._json(to_dict(store.set_photo(m.group(1), raw)), 201)
+            if path == "/api/capsule/photo":                              # body = raw image bytes
+                cap = self._capsule_for_writing()
+                qs = {k: v[0] for k, v in parse_qs(urlparse(self.path).query).items()}
+                item = cap.upload(qs.get("name", ""), raw, qs.get("modified", ""), qs.get("caption", ""),
+                                  qs.get("date", ""))
+                return self._json(item, 201)
+            if m := re.fullmatch(r"/api/capsule/photo/([\w-]+)/delete", path):
+                cap = self._capsule_for_writing()
+                try:
+                    cap.trash(m.group(1))
+                except KeyError:
+                    return self._error("no such photo", 404)
+                try:
+                    photo_notes().forget(m.group(1))
+                except Exception as e:
+                    print(f"Photo notes cleanup failed: {e}", flush=True)
+                return self._json({"ok": True})
             if m := re.fullmatch(r"/api/person/([^/]+)/delete", path):
                 return self._json(store.delete_person(m.group(1)))
             if m := re.fullmatch(r"/api/photo/([^/]+)/delete", path):
                 return self._json(to_dict(store.delete_photo(m.group(1))))
             data = json.loads(raw or b"{}")
+            if path == "/api/chat":
+                ag = chat_agent()
+                if ag is None:
+                    return self._error("The assistant is not set up yet (ANTHROPIC_API_KEY is missing).", 503)
+                if not chat_allowed(self._user() or "?"):
+                    return self._error("You have reached the hourly question limit. Please try again later.", 429)
+                return self._json(ag.ask(data.get("messages")))
+            if m := re.fullmatch(r"/api/capsule/note/([\w-]+)", path):       # description + people; needs no Drive write access
+                fid = m.group(1)
+                cap = capsule_client()
+                if cap is None or fid not in {p["id"] for p in cap.listing()}:
+                    return self._error("no such photo", 404)
+                store._load()
+                ids = []
+                for i in data.get("people") or []:
+                    i = str(i)
+                    if i not in store.people:
+                        return self._error(f"unknown person {i}")
+                    if i not in ids:
+                        ids.append(i)
+                if len(ids) > MAX_PEOPLE:
+                    return self._error(f"At most {MAX_PEOPLE} people can be tagged in one photo.")
+                desc = clean_desc(data.get("description"))
+                photo_notes().set(fid, desc, ids)
+                return self._json({"about": desc, "people": [{"id": i, "name": store.people[i].name} for i in ids]})
+            if m := re.fullmatch(r"/api/capsule/photo/([\w-]+)", path):      # change caption and/or date
+                cap = self._capsule_for_writing()
+                try:
+                    return self._json(cap.update(m.group(1), data.get("caption"), data.get("date")))
+                except KeyError:
+                    return self._error("no such photo", 404)
             if m := re.fullmatch(r"/api/person/([^/]+)", path):
                 p = store.update_person(m.group(1), data.get("name"), data.get("gender"),
                                         data.get("birth"), data.get("death"),
@@ -329,10 +448,25 @@ class Handler(BaseHTTPRequestHandler):
                 store.add_parent_child(data["parent_id"], data["child_id"])
                 return self._json({"ok": True}, 201)
             return self._error("not found", 404)
+        except DriveError as e:
+            print(f"Time Capsule error: {e}", flush=True)
+            return self._error(str(e), 502)
+        except ChatError as e:
+            if e.status >= 500:
+                print(f"Chat error: {e}", flush=True)
+            return self._error(str(e), e.status)
         except (FamilyError, KeyError, ValueError, json.JSONDecodeError) as e:
             return self._error(str(e))
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+            return                                   # the browser went away (page reload, closed tab): nothing to do
         except Exception as e:
             return self._error(f"server error: {type(e).__name__}: {e}", 500)
+
+    def _capsule_for_writing(self) -> DrivePhotos:
+        cap = capsule_client()
+        if cap is None:
+            raise DriveError("Time Capsule is not set up (DRIVE_FOLDER_ID is missing).")
+        return cap
 
 
 def main() -> None:
@@ -353,9 +487,20 @@ def main() -> None:
     else:
         print("WARNING: Login is OFF. Set APP_USERNAME and APP_PASSWORD before exposing this publicly.",
               flush=True)
+    print("Chat assistant: " + (f"ON (model {os.environ.get('CHAT_MODEL') or 'default'}, Ailments "
+          f"{'visible' if os.environ.get('CHAT_SHARE_HEALTH', '1').strip().lower() not in ('0', 'false', 'no', 'off') else 'hidden'})"
+          if os.environ.get("ANTHROPIC_API_KEY") else "OFF (set ANTHROPIC_API_KEY to turn it on)"), flush=True)
     folder = os.environ.get("DRIVE_FOLDER_ID", "").strip()
     print("Time Capsule: " + (f"Drive folder {parse_folder_id(folder)}" if folder
                               else "OFF (set DRIVE_FOLDER_ID to turn it on)"), flush=True)
+    if folder:
+        if os.environ.get("CAPSULE_READONLY", "").strip().lower() in ("1", "true", "yes", "on"):
+            print("Time Capsule editing: OFF (CAPSULE_READONLY)", flush=True)
+        elif os.environ.get("DRIVE_OAUTH_REFRESH_TOKEN"):
+            print("Time Capsule editing: ON (signed in with your Google account)", flush=True)
+        else:
+            print("Time Capsule editing: service account only (works in Shared Drives; for a normal folder "
+                  "run drive_authorize.py and set DRIVE_OAUTH_* - see README)", flush=True)
     ThreadingHTTPServer((a.host, a.port), Handler).serve_forever()
 
 

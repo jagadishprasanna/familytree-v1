@@ -19,8 +19,17 @@
   .seg button{border-radius:0;background:#3f8062;color:#fff}
   .seg button.on{background:#fff;color:var(--green2);font-weight:600}
   .grow{flex:1}
-  .treectl{} body.cap .treectl{display:none!important} body.cap main{display:none} body:not(.cap) #capsule{display:none}
+  .treectl{} body.cap .treectl,body.ask .treectl{display:none!important} body.cap main,body.ask main{display:none} body:not(.cap) #capsule{display:none} body:not(.ask) #chat{display:none}
   #capsule{flex:1;min-height:0;display:flex;flex-direction:column;background:#17201b;color:#fff}
+  #cap-actions{flex:none;display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:8px 12px;background:#101713;border-bottom:1px solid #26332b}
+  #cap-actions[hidden],#cap-dialog[hidden]{display:none} #cap-actions .btn[hidden]{display:none}
+  #cap-status{color:#cfd8d3;font-size:13px}
+  #cap-dialog{position:absolute;inset:0;z-index:9;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:16px}
+  .cap-box{background:#fff;color:#22302a;border-radius:12px;padding:18px;width:min(400px,100%);display:grid;gap:8px;box-shadow:0 10px 40px rgba(0,0,0,.4)}
+  .cap-box h3{margin:0 0 2px;font-size:17px} .cap-box p{margin:0;color:#4a5a52;line-height:1.5}
+  .cap-box label{font-size:12px;color:#6c7a72;margin-top:4px}
+  .cap-box input{width:100%;padding:9px 10px;border:1px solid #cfd8d3;border-radius:6px;font:inherit;font-size:16px}
+  .cap-box .row{margin-top:8px}
   .cap-msg{margin:auto;max-width:560px;padding:24px;text-align:center;color:#cfd8d3;line-height:1.6}
   .cap-msg code{background:rgba(255,255,255,.12);padding:1px 6px;border-radius:4px}
   #cap-wrap{flex:1;min-height:0;display:flex;flex-direction:column} #cap-wrap[hidden]{display:none}
@@ -32,6 +41,10 @@
   .cap-nav:hover{background:rgba(0,0,0,.65)} .cap-nav.prev{left:12px} .cap-nav.next{right:12px}
   .cap-bar{position:absolute;left:0;right:0;bottom:0;display:flex;justify-content:space-between;align-items:flex-end;gap:12px;
     padding:36px 18px 14px;background:linear-gradient(transparent,rgba(0,0,0,.72))}
+  .cap-info{min-width:0;flex:1} #cap-about{font-size:14px;line-height:1.45;color:#e6ece8;margin-top:4px;max-width:640px;max-height:5.8em;overflow:auto} #cap-about:empty,#cap-people:empty{display:none}
+  #cap-people{margin-top:6px} #cap-people button{background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.3);color:#fff;min-height:28px;padding:2px 10px} #cap-people button:hover{background:rgba(255,255,255,.26)}
+  .cap-box textarea{width:100%;padding:9px 10px;border:1px solid #cfd8d3;border-radius:6px;font:inherit;font-size:16px;resize:vertical}
+  .cap-box .cchips{margin-top:2px} .cap-box .cchips button{font-size:13px} .cap-box .cchips .x{margin-left:6px;opacity:.6}
   #cap-title{font-size:17px;font-weight:600} #cap-date{font-size:13px;color:#cfd8d3}
   .cap-tools{display:flex;align-items:center;gap:10px;white-space:nowrap;font-size:13px}
   .cap-tools button{border:0;border-radius:6px;padding:6px 10px;background:rgba(255,255,255,.18);color:#fff;font:inherit;cursor:pointer}
@@ -85,6 +98,28 @@
   .chk input{width:auto}
   #toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#8b2e2e;color:#fff;padding:9px 16px;border-radius:8px;display:none;z-index:9}
   .hint{position:absolute;left:12px;bottom:10px;color:var(--muted);font-size:12px;background:rgba(255,255,255,.8);padding:4px 8px;border-radius:6px}
+  #chat{flex:1;min-height:0;display:flex;flex-direction:column;background:var(--bg,#f3f0e8)}
+  #chat-log{flex:1;min-height:0;overflow-y:auto;padding:16px 14px;display:flex;flex-direction:column;gap:10px;-webkit-overflow-scrolling:touch}
+  .cmsg{max-width:min(720px,92%);padding:10px 14px;border-radius:14px;line-height:1.5;word-wrap:break-word;box-shadow:0 1px 2px rgba(0,0,0,.08)}
+  .cmsg p{margin:0 0 6px} .cmsg p:last-child{margin-bottom:0} .cmsg ul{margin:4px 0 6px;padding-left:20px}
+  .cmsg.u{align-self:flex-end;background:#2e6a4e;color:#fff;border-bottom-right-radius:4px;white-space:pre-wrap}
+  .cmsg.a{align-self:flex-start;background:#fff;border-bottom-left-radius:4px}
+  .cmsg.err{align-self:flex-start;background:#fbeaea;color:#6b2323}
+  .cmsg.hello{align-self:center;max-width:620px;text-align:center;background:transparent;box-shadow:none;color:#4a5a52}
+  .cmsg.hello h2{margin:0 0 6px;color:#2e6a4e} .cmsg.hello code{background:rgba(0,0,0,.07);padding:1px 6px;border-radius:4px}
+  .cchips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+  .cchips button{border:1px solid #cfe0d6;background:#eef5f1;color:#245640;border-radius:999px;padding:4px 12px;font:inherit;font-size:13px;cursor:pointer;min-height:30px}
+  .cchips button:hover{background:#dcebe2} .cchips .lbl{font-size:12px;color:#6c7a72;align-self:center}
+  #chat-sugg{display:flex;flex-wrap:wrap;gap:8px;padding:0 14px 8px;justify-content:center}
+  #chat-sugg button{border:1px solid #cfd8d3;background:#fff;border-radius:999px;padding:7px 14px;font:inherit;font-size:14px;cursor:pointer;color:#245640}
+  #chat-sugg button:hover{background:#eef5f1}
+  #chat-bar{flex:none;display:flex;gap:8px;align-items:flex-end;padding:10px 14px calc(10px + env(safe-area-inset-bottom));background:#fff;border-top:1px solid #ddd}
+  #chat-in{flex:1;resize:none;max-height:120px;padding:10px 12px;border:1px solid #cfd8d3;border-radius:10px;font:inherit;font-size:16px;line-height:1.4}
+  #chat-in:focus{outline:2px solid #2e6a4e55;border-color:#2e6a4e}
+  #chat-send{height:42px;padding:0 18px} #chat-send:disabled,#chat-in:disabled{opacity:.55;cursor:wait}
+  .dots span{display:inline-block;width:7px;height:7px;margin:0 2px;border-radius:50%;background:#9bb3a6;animation:blink 1.2s infinite}
+  .dots span:nth-child(2){animation-delay:.2s} .dots span:nth-child(3){animation-delay:.4s}
+  @keyframes blink{0%,80%,100%{opacity:.25}40%{opacity:1}}
   .ctl{display:contents} #sheet{display:contents} #pclose{display:none}
   @media(hover:none),(max-width:800px){button,select,summary{min-height:38px} .btn{padding:9px 14px}}
   @media(max-width:800px){
@@ -105,19 +140,19 @@
       font:inherit;font-weight:600;padding:0 14px;cursor:pointer}
     #sheet aside{width:auto;flex:1;min-height:0;border:0;padding:6px 16px calc(18px + env(safe-area-inset-bottom));-webkit-overflow-scrolling:touch}
     form input,form select,form textarea{font-size:16px;padding:9px 10px}
-    #toast{bottom:auto;top:calc(70px + env(safe-area-inset-top));max-width:92vw;text-align:center}
+    #toast{bottom:auto;top:calc(124px + env(safe-area-inset-top));max-width:92vw;text-align:center}
     .pic{width:72px;height:72px}
     .cap-nav{width:36px;height:56px;font-size:30px} .cap-nav.prev{left:6px} .cap-nav.next{right:6px}
     .cap-bar{padding:28px 12px 10px} #cap-title{font-size:15px} .cap-tools{gap:6px} .cap-tools button{padding:6px 8px;min-height:34px}
     #cap-strip{padding:6px 8px calc(6px + env(safe-area-inset-bottom))} #cap-strip img{height:48px;min-width:36px}
   }
-  @media(max-width:400px){#tabs button{padding:0 9px;font-size:13px}} @media(max-width:350px){#cap-count{display:none}}
+  @media(max-width:400px){#tabs button{padding:0 9px;font-size:13px} .m-hide{display:none}} @media(max-width:350px){#cap-count{display:none}}
 </style>
 </head>
 <body>
 <header>
   <h1><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><path d="M12 21V9M12 13c-4 0-6-2-6-6 4 0 6 2 6 6zM12 15c3 0 5-2 5-5-3 0-5 2-5 5z"/></svg><span class="brand">Family Tree</span></h1>
-  <div class="seg" id="tabs"><button id="t-tree" class="on">Family Tree</button><button id="t-cap">Time Capsule</button></div>
+  <div class="seg" id="tabs"><button id="t-tree" class="on"><span class="m-hide">Family </span>Tree</button><button id="t-cap"><span class="m-hide">Time </span>Capsule</button><button id="t-ask">Ask</button></div>
   <input id="search" class="treectl" list="plist" placeholder="Search a person…" autocomplete="off">
   <div class="ctl treectl">
     <div class="seg">
@@ -137,6 +172,15 @@
   <div id="sheet"><button id="pclose" aria-label="Close details">&times; Close</button><aside id="panel"></aside></div>
 </main>
 <section id="capsule">
+  <div id="cap-actions" hidden>
+    <button class="btn" id="cap-add">+ Add photos</button>
+    <button class="btn" id="cap-note">Description &amp; people</button>
+    <button class="btn ghost" id="cap-edit">Edit caption / date</button>
+    <button class="btn danger" id="cap-del">Delete</button>
+    <span id="cap-status"></span>
+    <input type="file" id="cap-file" accept="image/jpeg,image/png,image/webp,image/gif,image/heic,image/*" multiple hidden>
+  </div>
+  <div id="cap-dialog" hidden></div>
   <div id="cap-msg" class="cap-msg"></div>
   <div id="cap-wrap" hidden>
     <div id="cap-stage" tabindex="0">
@@ -144,13 +188,21 @@
       <button class="cap-nav prev" id="cap-prev" aria-label="Previous photo">&#8249;</button>
       <button class="cap-nav next" id="cap-next" aria-label="Next photo">&#8250;</button>
       <div class="cap-bar">
-        <div><div id="cap-title"></div><div id="cap-date"></div></div>
+        <div class="cap-info"><div id="cap-title"></div><div id="cap-date"></div><div id="cap-about"></div><div id="cap-people" class="cchips"></div></div>
         <div class="cap-tools"><span id="cap-count"></span>
           <button id="cap-play" title="Slideshow (space)">&#9654; Play</button>
           <button id="cap-full" title="Full screen">&#9974;</button></div>
       </div>
     </div>
     <div id="cap-strip"></div>
+  </div>
+</section>
+<section id="chat">
+  <div id="chat-log"></div>
+  <div id="chat-sugg"></div>
+  <div id="chat-bar">
+    <textarea id="chat-in" rows="1" maxlength="2000" placeholder="Ask about your family…" aria-label="Your question"></textarea>
+    <button class="btn" id="chat-send">Send</button>
   </div>
 </section>
 <datalist id="plist"></datalist><datalist id="nakl"></datalist><datalist id="gotl"></datalist>
@@ -169,7 +221,7 @@ async function api(path,body){
   const r=await fetch(path, body?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:undefined);
   if(r.status===401){location.replace('/login'); throw new Error('Signed out');}
   const j=await r.json(); if(!r.ok) throw new Error(j.error||r.statusText); return j;}
-function toast(m,ok){const t=$('#toast');t.style.background=ok?'#2e6a4e':'';t.textContent=m;t.style.display='block';clearTimeout(toast.h);toast.h=setTimeout(()=>t.style.display='none',3500);}
+function toast(m,ok,ms){const t=$('#toast');t.style.background=ok?'#2e6a4e':'';t.textContent=m;t.style.display='block';clearTimeout(toast.h);toast.h=setTimeout(()=>t.style.display='none',ms||(m.length>90?9000:3500));}
 const yr=s=>((s||'').match(/\d{4}/)||[''])[0];
 function years(p){const b=yr(p.birth),d=yr(p.death); if(!b&&!d)return ''; return d?`${b||'?'} – ${d}`:b;}
 const NAKSHATRAS=['Ashwini','Bharani','Krittika','Rohini','Mrigashira','Ardra','Punarvasu','Pushya','Ashlesha','Magha',
@@ -451,20 +503,24 @@ let treeInit=false;
 const cap={loaded:false,photos:[],thumbs:false,i:0,timer:null};
 const capUrl=(p,thumb)=>`/api/capsule/photo/${p.id}?v=${encodeURIComponent(p.version)}${thumb?'&size=thumb':''}`;
 const capMsg=h=>{$('#cap-msg').innerHTML=h;$('#cap-msg').style.display='';$('#cap-wrap').hidden=true;};
-async function capLoad(refresh){
-  capMsg('Loading photos…'); capStop();
+async function capLoad(refresh,opts={}){
+  if(!opts.quiet){capMsg('Loading photos…'); capStop();}
   try{
     const d=await api('/api/capsule'+(refresh?'?refresh=1':''));
+    cap.canEdit=!!d.canEdit; $('#cap-actions').hidden=!d.configured; $('#cap-add').hidden=!d.canEdit;
     if(!d.configured) return capMsg('<h2>Time Capsule</h2>To show photos here, put them in a Google Drive folder, share that folder (Viewer) with your service account, and set <code>DRIVE_FOLDER_ID</code> on the server to the folder\'s id or link.');
+    $('#cap-note').hidden=!d.photos.length; $('#cap-edit').hidden=$('#cap-del').hidden=!d.photos.length||!d.canEdit;
     if(!d.photos.length){
-      let why = d.seen===0 ? 'The app can open the folder, but it contains no files. If your photos are somewhere else, move them into the shared folder (subfolders are fine), or share the folder that really holds them.'
+      cap.photos=[];
+      let why = d.seen===0 ? 'The app can open the folder, but it contains no files.'+(d.canEdit?' Use <b>+ Add photos</b> above to put the first ones in.':' If your photos are somewhere else, move them into the shared folder (subfolders are fine), or share the folder that really holds them.')
         : `The app can open the folder and sees ${d.seen} file${d.seen>1?'s':''}, but none are photos it can show (JPEG, PNG, WebP or GIF).`;
       if(d.skipped) why+=` ${d.skipped} image file${d.skipped>1?'s were':' was'} skipped, for example HEIC, which browsers cannot show.`;
       if(d.other&&d.other.length) why+=`<br><br>Files seen: ${d.other.map(esc).join(', ')}`;
       return capMsg('<h2>Time Capsule</h2>'+why);
     }
-    Object.assign(cap,{photos:d.photos,thumbs:d.thumbs,i:0,loaded:true});
-    $('#cap-msg').style.display='none'; $('#cap-wrap').hidden=false; capStrip(); capShow(0);
+    let i=opts.id?d.photos.findIndex(p=>p.id===opts.id):-1; if(i<0) i=Math.min(opts.index||0,d.photos.length-1);
+    Object.assign(cap,{photos:d.photos,thumbs:d.thumbs,loaded:true});
+    $('#cap-msg').style.display='none'; $('#cap-wrap').hidden=false; capStrip(); capShow(i);
   }catch(e){const m=e.message||'';
     capMsg('<h2>Time Capsule</h2>'+esc(m)+(m==='not found'?'<br><br>The server is running an older version of the app that has no Time Capsule. Deploy <code>drive_photos.py</code> and the latest <code>web.py</code>, then reload.':''));}
 }
@@ -480,7 +536,8 @@ function capShow(k){
   im.classList.add('fade');
   const next=new Image(); next.onload=next.onerror=()=>{im.src=next.src; im.alt=p.caption; im.classList.remove('fade');};
   next.src=capUrl(p);
-  $('#cap-title').textContent=p.caption; $('#cap-date').textContent=capDate(p.date);
+  $('#cap-title').textContent=p.caption; $('#cap-date').textContent=capDate(p.date); $('#cap-about').textContent=p.about||'';
+  const pp=$('#cap-people'); pp.innerHTML=''; (p.people||[]).forEach(x=>{const b=document.createElement('button'); b.textContent=x.name; b.title='Open in the family tree'; b.onclick=()=>{capStop(); chatOpen(x.id);}; pp.appendChild(b);});
   $('#cap-count').textContent=`${cap.i+1} / ${n}`;
   document.querySelectorAll('#cap-strip [data-k]').forEach(e=>e.classList.toggle('on',+e.dataset.k===cap.i));
   const cur=document.querySelector(`#cap-strip [data-k="${cap.i}"]`); if(cur&&cur.scrollIntoView) cur.scrollIntoView({block:'nearest',inline:'center'});
@@ -489,22 +546,176 @@ function capShow(k){
 function capDate(d){ if(!d) return ''; const t=new Date(d+'T12:00:00'); return isNaN(t)?d:t.toLocaleDateString(undefined,{year:'numeric',month:'long',day:'numeric'}); }
 function capStop(){ clearInterval(cap.timer); cap.timer=null; $('#cap-play').innerHTML='&#9654; Play'; }
 function capToggle(){ if(cap.timer) return capStop(); $('#cap-play').innerHTML='&#10074;&#10074; Pause'; cap.timer=setInterval(()=>capShow(cap.i+1),5000); }
-function setTab(t){
-  const c=t==='capsule'; document.body.classList.toggle('cap',c);
-  $('#t-tree').classList.toggle('on',!c); $('#t-cap').classList.toggle('on',c);
-  if(c){ location.hash='capsule'; if(!cap.loaded) capLoad(); }
-  else{ capStop(); if(!treeInit) initTree(); else location.hash=focus?`${view}/${focus}`:''; }
+
+/* ---- add, edit and delete photos ---- */
+const CAPMAX=10*1024*1024, capStatus=t=>{$('#cap-status').textContent=t||'';};
+async function prepPhoto(file){       // send the original when we can (it keeps the date taken); redraw HEIC/huge ones as JPEG
+  if((/^image\/(jpeg|png|webp|gif)$/.test(file.type)||/\.(jpe?g|png|webp|gif)$/i.test(file.name))&&file.size<=CAPMAX) return file;
+  let im; try{im=await loadImage(file);}catch(e){throw new Error(`${file.name}: this browser cannot read that picture type (iPhone HEIC photos usually need to be shared as JPEG, or choose "Most compatible" in the camera settings)`);}
+  let S=Math.min(1,2400/Math.max(im.naturalWidth,im.naturalHeight));
+  for(let t=0;t<5;t++){
+    const c=document.createElement('canvas'); c.width=Math.round(im.naturalWidth*S); c.height=Math.round(im.naturalHeight*S);
+    const x=c.getContext('2d'); x.fillStyle='#fff'; x.fillRect(0,0,c.width,c.height); x.drawImage(im,0,0,c.width,c.height);
+    const b=await toBlob(c,.88); if(b&&b.size<=CAPMAX) return b; S*=.75;
+  }
+  throw new Error(`${file.name}: could not make it small enough`);
 }
-$('#t-tree').onclick=()=>setTab('tree'); $('#t-cap').onclick=()=>setTab('capsule');
+function capAsk(title,body,okLabel,danger){
+  return new Promise(res=>{
+    const d=$('#cap-dialog');
+    d.innerHTML=`<div class="cap-box" role="dialog"><h3>${title}</h3>${body}<div class="row"><button class="btn ${danger?'danger solid':''}" id="cd-ok">${okLabel}</button><button class="btn ghost" id="cd-no">Cancel</button></div></div>`;
+    d.hidden=false;
+    const done=ok=>{const v=ok?Object.fromEntries([...d.querySelectorAll('input,textarea')].map(i=>[i.id,i.value])):null; d.hidden=true; d.innerHTML=''; res(v);};
+    $('#cd-ok').onclick=()=>done(true); $('#cd-no').onclick=()=>done(false); d.onclick=e=>{if(e.target===d)done(false);};
+    d.querySelectorAll('input').forEach(i=>i.onkeydown=e=>{if(e.key==='Enter')done(true); else if(e.key==='Escape')done(false);});
+    const f=d.querySelector('input:not([type=hidden]),textarea'); if(f) f.focus(); else $('#cd-no').focus();
+  });
+}
+
+/* ---- description and people for a photo (kept in the Sheet, so no Drive write access is needed) ---- */
+$('#cap-note').onclick=async()=>{
+  const p=cap.photos[cap.i]; if(!p) return; capStop();
+  if(!people.length) await loadPeople().catch(()=>{});
+  let sel=(p.people||[]).map(x=>x.id);
+  const pr=capAsk('Describe this photo',`<label for="cn-desc">Short description</label>
+    <textarea id="cn-desc" rows="4" maxlength="600" placeholder="Who, where, what was happening…">${esc(p.about||'')}</textarea>
+    <label for="cn-add">People in this photo</label><div class="cchips" id="cn-chips"></div>
+    <input id="cn-add" list="plist" placeholder="Type a name to add…" autocomplete="off"><input type="hidden" id="cn-people">`,'Save');
+  const chips=()=>{ $('#cn-people').value=sel.join(',');
+    $('#cn-chips').innerHTML=''; sel.forEach(id=>{const x=byId(id); if(!x) return; const b=document.createElement('button'); b.type='button';
+      b.innerHTML=esc(x.name)+'<span class="x">&times;</span>'; b.title='Remove'; b.onclick=()=>{sel=sel.filter(i=>i!==id); chips();}; $('#cn-chips').appendChild(b);}); };
+  const toId=v=>{v=(v||'').trim(); return (v.match(/\[(\w+)\]\s*$/)||[])[1]||(people.find(x=>x.name.toLowerCase()===v.toLowerCase())||{}).id;};
+  const add=()=>{ const el=$('#cn-add'), id=toId(el.value); if(id&&byId(id)&&!sel.includes(id)){sel.push(id); chips();} el.value=''; };
+  chips(); $('#cn-add').onchange=add; $('#cn-add').onkeydown=e=>{ if(e.key==='Enter'){e.preventDefault(); add();} else if(e.key==='Escape'){$('#cd-no').click();} };
+  const v=await pr; if(!v) return;
+  try{
+    const ids=v['cn-people']?v['cn-people'].split(','):[]; const last=toId(v['cn-add']); if(last&&byId(last)&&!ids.includes(last)) ids.push(last);   // a name typed but not yet confirmed
+    const j=await api('/api/capsule/note/'+encodeURIComponent(p.id),{description:v['cn-desc'],people:ids});
+    p.about=j.about; p.people=j.people; capShow(cap.i); toast('Saved',true);
+  }catch(e){toast(e.message);}
+};
+$('#cap-add').onclick=()=>$('#cap-file').click();
+$('#cap-file').onchange=async e=>{
+  const files=[...e.target.files]; e.target.value=''; if(!files.length) return;
+  capStop(); const fails=[]; let lastId=null, ok=0;
+  $('#cap-add').disabled=true;
+  for(let k=0;k<files.length;k++){
+    const f=files[k]; capStatus(`Uploading ${k+1} of ${files.length}…`);
+    try{
+      const blob=await prepPhoto(f);
+      const q=new URLSearchParams({name:f.name,modified:new Date(f.lastModified||Date.now()).toISOString().replace(/\.\d+Z$/,'Z')});
+      const r=await fetch('/api/capsule/photo?'+q,{method:'POST',headers:{'Content-Type':blob.type||'application/octet-stream'},body:blob});
+      if(r.status===401){location.replace('/login');return;}
+      let j={}; try{j=await r.json();}catch(_){}
+      if(!r.ok) throw new Error(j.error||('Upload failed ('+r.status+')'));
+      lastId=j.id; ok++;
+    }catch(err){fails.push(err.message); if(/storage space|sign-in|not allowed|switched off/i.test(err.message)) break;}
+  }
+  $('#cap-add').disabled=false; capStatus('');
+  if(ok) await capLoad(false,{quiet:true,id:lastId});
+  if(fails.length) toast((ok?`${ok} added. `:'')+fails[0]+(fails.length>1?` (+${fails.length-1} more problems)`:''),false,10000);
+  else toast(`${ok} photo${ok>1?'s':''} added`,true);
+};
+$('#cap-edit').onclick=async()=>{
+  const p=cap.photos[cap.i]; if(!p) return;
+  const v=await capAsk('Edit photo details',`<label for="ce-cap">Caption</label><input id="ce-cap" maxlength="500" value="${esc(p.caption)}">
+    <label for="ce-date">Date (shown under the caption and used for the order)</label><input id="ce-date" type="date" value="${esc(p.date||'')}">`,'Save');
+  if(!v) return;
+  const body={}; if(v['ce-cap'].trim()!==p.caption) body.caption=v['ce-cap']; if(v['ce-date']!==(p.date||'')) body.date=v['ce-date'];
+  if(!Object.keys(body).length) return;
+  try{capStatus('Saving…'); await api('/api/capsule/photo/'+p.id,body); capStatus(''); await capLoad(false,{quiet:true,id:p.id}); toast('Saved',true);}
+  catch(err){capStatus(''); toast(err.message,false,8000);}
+};
+$('#cap-del').onclick=async()=>{
+  const p=cap.photos[cap.i]; if(!p) return;
+  const v=await capAsk('Delete this photo?',`<p><b>${esc(p.caption)}</b><br>It moves to the Google Drive trash, where it stays for 30 days before it is gone for good.</p>`,'Delete photo',true);
+  if(!v) return;
+  try{capStatus('Deleting…'); await api(`/api/capsule/photo/${p.id}/delete`,{}); capStatus(''); await capLoad(false,{quiet:true,index:cap.i}); toast('Photo deleted',true);}
+  catch(err){capStatus(''); toast(err.message,false,8000);}
+};
+let treeP=null;
+function setTab(t){
+  const c=t==='capsule', k=t==='ask'; document.body.classList.toggle('cap',c); document.body.classList.toggle('ask',k);
+  $('#t-tree').classList.toggle('on',!c&&!k); $('#t-cap').classList.toggle('on',c); $('#t-ask').classList.toggle('on',k);
+  if(!c) capStop();
+  if(c){ location.hash='capsule'; if(!cap.loaded) capLoad(); }
+  else if(k){ location.hash='ask'; chatInit(); }
+  else{ if(!treeInit) treeP=initTree(); else location.hash=focus?`${view}/${focus}`:''; }
+}
+$('#t-tree').onclick=()=>setTab('tree'); $('#t-cap').onclick=()=>setTab('capsule'); $('#t-ask').onclick=()=>setTab('ask');
 $('#cap-prev').onclick=()=>{capShow(cap.i-1)}; $('#cap-next').onclick=()=>{capShow(cap.i+1)};
 $('#cap-play').onclick=capToggle;
 $('#cap-full').onclick=()=>{const st=$('#cap-stage'); document.fullscreenElement?document.exitFullscreen():st.requestFullscreen&&st.requestFullscreen();};
-document.addEventListener('keydown',e=>{ if(!document.body.classList.contains('cap')||/INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
+document.addEventListener('keydown',e=>{ const tg=e.target.tagName; if(!document.body.classList.contains('cap')||!$('#cap-dialog').hidden||/INPUT|TEXTAREA|SELECT/.test(tg)||(tg==='BUTTON'&&e.key===' ')) return;
   if(e.key==='ArrowLeft') capShow(cap.i-1); else if(e.key==='ArrowRight') capShow(cap.i+1);
   else if(e.key===' '){e.preventDefault();capToggle();} });
 (()=>{let x=null; const st=$('#cap-stage');
   st.addEventListener('touchstart',e=>{x=e.touches[0].clientX;},{passive:true});
   st.addEventListener('touchend',e=>{ if(x===null) return; const d=e.changedTouches[0].clientX-x; x=null; if(Math.abs(d)>40) capShow(cap.i+(d<0?1:-1)); });})();
+
+
+/* ---------- Ask: chat assistant over the family data ---------- */
+const chat={ready:false,configured:false,msgs:[],busy:false};
+const inl=t=>t.replace(/\*\*(.+?)\*\*/g,'<b>$1</b>');
+function mdLite(t){
+  let html='',list=false;
+  for(const ln of esc(t).split('\n')){
+    const m=ln.match(/^\s*(?:[-*\u2022]|\d+[.)])\s+(.*)$/);
+    if(m){ if(!list){html+='<ul>';list=true;} html+='<li>'+inl(m[1])+'</li>'; }
+    else{ if(list){html+='</ul>';list=false;} if(ln.trim()) html+='<p>'+inl(ln)+'</p>'; }
+  }
+  return html+(list?'</ul>':'');
+}
+function chatAdd(cls,html){const d=document.createElement('div'); d.className='cmsg '+cls; d.innerHTML=html; const l=$('#chat-log'); l.appendChild(d); l.scrollTop=l.scrollHeight; return d;}
+async function chatInit(){
+  if(chat.ready){$('#chat-in').focus();return;}
+  chat.ready=true; $('#chat-log').innerHTML='';
+  try{
+    const st=await api('/api/chat'); chat.configured=st.configured;
+    if(!st.configured){
+      $('#chat-bar').style.display='none';
+      return chatAdd('hello','<h2>Ask about your family</h2>The assistant is not switched on yet. On the server, set <code>ANTHROPIC_API_KEY</code> (an Anthropic API key) and redeploy.');
+    }
+    chatAdd('hello','<h2>Ask about your family</h2>Ask in plain words, for example how two people are related, who has a certain nakshatra or gotra, or who was born in a given period. Answers come only from your tree'+(st.health?'':' (health notes are hidden from the assistant)')+'.');
+    if(!people.length) await loadPeople().catch(()=>{});     // opened straight on this tab
+    chatSuggest();
+  }catch(e){chat.ready=false; chatAdd('err',esc(e.message));}
+  $('#chat-in').focus();
+}
+function chatSuggest(){
+  const P=people, q=[]; if(!P.length){$('#chat-sugg').innerHTML='';return;}
+  q.push('Give me a short summary of the family');
+  if(P.length>1){const a=P[Math.min(1,P.length-1)],b=P[P.length-1]; if(a.id!==b.id) q.push(`How are ${a.name} and ${b.name} related?`);}
+  const g=(P.find(p=>p.gotra)||{}).gotra, n=(P.find(p=>p.nakshatra)||{}).nakshatra;
+  if(g) q.push(`Who belongs to the ${g} gotra?`); if(n) q.push(`Who has the ${n} nakshatra?`);
+  if(!g&&!n) q.push(`Who are ${P[0].name}'s descendants?`);
+  const box=$('#chat-sugg'); box.innerHTML='';
+  q.slice(0,4).forEach(t=>{const b=document.createElement('button'); b.textContent=t; b.onclick=()=>chatSend(t); box.appendChild(b);});
+}
+async function chatOpen(id){ setTab('tree'); if(treeP) await treeP; await setFocus(id); }
+async function chatSend(text){
+  text=(text||$('#chat-in').value).trim(); if(!text||chat.busy) return;
+  chat.busy=true; $('#chat-in').value=''; $('#chat-in').style.height=''; $('#chat-sugg').innerHTML='';
+  $('#chat-send').disabled=$('#chat-in').disabled=true;
+  chatAdd('u',esc(text)); chat.msgs.push({role:'user',content:text});
+  const wait=chatAdd('a','<span class="dots"><span></span><span></span><span></span></span>');
+  try{
+    const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:chat.msgs.slice(-12)})});
+    if(r.status===401){location.replace('/login');return;}
+    let j={}; try{j=await r.json();}catch(_){}
+    if(!r.ok) throw new Error(j.error||('Something went wrong ('+r.status+')'));
+    wait.innerHTML=mdLite(j.answer); chat.msgs.push({role:'assistant',content:j.answer});
+    if((j.people||[]).length){
+      const row=document.createElement('div'); row.className='cchips'; row.innerHTML='<span class="lbl">Open in tree:</span>';
+      j.people.forEach(p=>{const b=document.createElement('button'); b.textContent=p.name; b.onclick=()=>chatOpen(p.id); row.appendChild(b);});
+      wait.appendChild(row);
+    }
+  }catch(e){ wait.className='cmsg err'; wait.textContent=e.message; chat.msgs.pop(); }
+  finally{ chat.busy=false; $('#chat-send').disabled=$('#chat-in').disabled=false; $('#chat-in').focus(); const l=$('#chat-log'); l.scrollTop=l.scrollHeight; }
+}
+$('#chat-send').onclick=()=>chatSend();
+$('#chat-in').addEventListener('keydown',e=>{ if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();chatSend();} });
+$('#chat-in').addEventListener('input',e=>{const t=e.target; t.style.height='auto'; t.style.height=Math.min(t.scrollHeight,120)+'px';});
 
 /* ---------- boot ---------- */
 function firstPerson(){
@@ -549,6 +760,7 @@ $('#panel').addEventListener('click',e=>e.stopPropagation());
       b.onclick=async()=>{await fetch('/logout',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}); location.replace('/login');};}}catch(e){}
   await loadPeople();
   if(location.hash==='#capsule') return setTab('capsule');      // opened straight on the Time Capsule tab
+  if(location.hash==='#ask') return setTab('ask');
   await initTree();
 })();
 async function initTree(){
