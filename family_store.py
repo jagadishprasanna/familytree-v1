@@ -276,6 +276,27 @@ class FamilyStore:
             self._load(force=True)
             return self.marriages[-1]
 
+    def bulk_add(self, people: list[list[str]], marriages: list[list[str]], parents: list[list[str]]) -> None:
+        """Add many records at once (used by the Geni import). Rows are already checked by plan_import;
+        this only guards against ids that would clash."""
+        with self._lock:
+            self._load(force=True)
+            ids = [r[0] for r in people]
+            clash = [i for i in ids if i in self.people]
+            if clash or len(set(ids)) != len(ids):
+                raise FamilyError(f"person id {(clash or ids)[0]} already exists")
+            known = set(self.people) | set(ids)
+            for r in marriages:
+                if r[0] not in known or r[1] not in known:
+                    raise FamilyError(f"marriage refers to an unknown person ({r[0]}, {r[1]})")
+            for r in parents:
+                if r[0] not in known or r[1] not in known:
+                    raise FamilyError(f"parent link refers to an unknown person ({r[0]}, {r[1]})")
+            self.backend.add_many("PERSON", people)
+            self.backend.add_many("MARRIED", marriages)
+            self.backend.add_many("PARENT", parents)
+            self._load(force=True)
+
     def add_parent_child(self, parent: str, child: str) -> None:
         with self._lock:
             self._load()

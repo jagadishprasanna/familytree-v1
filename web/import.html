@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Import from Geni - Family Tree - Bridging generations</title>
+<style>
+  *{box-sizing:border-box}
+  :root{--green:#2e6a4e;--ink:#22302a;--mut:#6c7a72;--line:#dfe5e1;--bg:#f3f0e8}
+  body{margin:0;min-height:100vh;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+       background-image:radial-gradient(circle at 1px 1px,#d9d4c7 1px,transparent 0);background-size:24px 24px}
+  header{background:var(--green);color:#fff;display:flex;align-items:center;gap:12px;padding:10px 16px;padding-top:calc(10px + env(safe-area-inset-top))}
+  header h1{margin:0;font-size:18px;display:flex;align-items:center;gap:9px;flex:1;min-width:0}
+  header h1 span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  header a{color:#fff;text-decoration:none;background:rgba(255,255,255,.18);padding:8px 12px;border-radius:6px;white-space:nowrap}
+  header a:hover{background:rgba(255,255,255,.3)}
+  main{max-width:820px;margin:0 auto;padding:18px 14px calc(40px + env(safe-area-inset-bottom))}
+  .card{background:#fff;border-radius:12px;padding:20px 22px;margin-bottom:16px;box-shadow:0 2px 10px rgba(0,0,0,.07)}
+  h2{margin:0 0 6px;font-size:17px;color:var(--green)}
+  p{margin:0 0 10px;color:var(--mut)} p.ink{color:var(--ink)}
+  .drop{display:block;margin-top:8px;border:2px dashed #b9c9c0;border-radius:12px;padding:28px 14px;text-align:center;cursor:pointer;background:#f8faf9;transition:.15s}
+  .drop.over,.drop:hover{border-color:var(--green);background:#eef5f1}
+  .drop b{display:block;font-size:16px;color:var(--ink)} .drop small{color:var(--mut)}
+  .drop input{display:none}
+  .opts{display:flex;flex-wrap:wrap;gap:8px 22px;margin-top:14px;align-items:center}
+  .opts label{display:flex;gap:8px;align-items:center;font-size:14px;cursor:pointer}
+  .opts input[type=checkbox]{width:18px;height:18px}
+  .opts input[type=text]{width:70px;padding:7px 9px;border:1px solid #cfd8d3;border-radius:6px;font:inherit;font-size:16px}
+  .tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:12px 0}
+  .tile{border:1px solid var(--line);border-radius:10px;padding:12px;text-align:center;background:#fafcfb}
+  .tile b{display:block;font-size:26px;color:var(--green);line-height:1.1} .tile span{font-size:12px;color:var(--mut)}
+  .tile.zero b{color:#9aa7a0}
+  table{width:100%;border-collapse:collapse;font-size:14px} th{text-align:left;color:var(--mut);font-weight:600;font-size:12px}
+  td,th{padding:6px 8px;border-bottom:1px solid #edf1ee;white-space:nowrap} .scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  details{margin-top:10px} summary{cursor:pointer;color:var(--green);font-weight:600;min-height:32px;display:flex;align-items:center}
+  ul{margin:6px 0 0;padding-left:20px;color:#5a3a1c;font-size:14px} li{margin:2px 0}
+  .btn{background:var(--green);color:#fff;border:0;border-radius:8px;padding:12px 20px;font:inherit;font-weight:600;cursor:pointer;min-height:44px}
+  .btn:disabled{opacity:.5;cursor:not-allowed} .btn.ghost{background:#eef2ef;color:var(--ink)}
+  .btn.go{width:100%;margin-top:6px}
+  .err{background:#fbeaea;color:#6b2323;border-radius:10px;padding:12px 14px;margin-bottom:16px}
+  .ok{background:#e8f4ec;border:1px solid #b9dcc6;border-radius:12px;padding:20px 22px;margin-bottom:16px}
+  .ok h2{color:#1d5a3a} .row{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
+  a.btn{text-decoration:none;display:inline-flex;align-items:center}
+  .spin{display:inline-block;width:16px;height:16px;border:2px solid #cfd8d3;border-top-color:var(--green);border-radius:50%;animation:s .8s linear infinite;vertical-align:-3px;margin-right:8px}
+  @keyframes s{to{transform:rotate(360deg)}}
+  [hidden]{display:none!important}
+  @media(max-width:560px){.tiles{grid-template-columns:repeat(2,1fr)} .card{padding:16px} header h1 span{display:none}}
+</style>
+</head>
+<body>
+<header>
+  <h1><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><path d="M12 21V9M12 13c-4 0-6-2-6-6 4 0 6 2 6 6zM12 15c3 0 5-2 5-5-3 0-5 2-5 5z"/></svg><span>Import from Geni</span></h1>
+  <a href="/">&larr; Back to the tree</a>
+</header>
+<main>
+  <div id="error" class="err" hidden></div>
+
+  <div id="done" class="ok" hidden>
+    <h2>Import finished</h2>
+    <p class="ink" id="done-text"></p>
+    <details id="done-warn" hidden><summary>Things that were skipped</summary><ul id="done-warn-list"></ul></details>
+    <div class="row"><a class="btn" href="/">Open the family tree</a><button class="btn ghost" id="again">Import another file</button></div>
+  </div>
+
+  <div id="steps">
+    <div class="card">
+      <h2>1. Get your file from Geni</h2>
+      <p>Export your tree from Geni as a <b>GEDCOM</b> file (ends in <code>.ged</code>). Search Geni's help for "export GEDCOM" if you can't find the option. Nothing is sent to Geni from here, and nothing is saved until you confirm in step 3.</p>
+    </div>
+
+    <div class="card">
+      <h2>2. Choose the file</h2>
+      <label class="drop" id="drop" for="file"><input type="file" id="file" accept=".ged,.gedcom,.txt">
+        <b id="drop-title">Tap or drop your .ged file here</b><small id="drop-sub">Up to about 12 MB</small></label>
+      <div class="opts">
+        <label>ID prefix <input type="text" id="prefix" value="G" maxlength="6" autocomplete="off" aria-label="ID prefix"></label>
+        <label><input type="checkbox" id="birth"> Skip adopted, foster and step parents</label>
+        <label><input type="checkbox" id="qual"> Keep "about / before / after" in dates</label>
+      </div>
+      <p style="margin-top:10px;font-size:13px">New people get ids like <code id="prefix-eg">G123</code>. People already in your tree (same name and birth date) are matched, not duplicated, and new relatives are attached to them.</p>
+    </div>
+
+    <div class="card" id="review" hidden>
+      <h2>3. Review and import</h2>
+      <div id="busy" hidden><span class="spin"></span>Reading the file&hellip;</div>
+      <div id="result" hidden>
+        <div class="tiles" id="tiles"></div>
+        <div id="matched-box" hidden><p style="margin:4px 0">Already in your tree (will be reused): <span id="matched"></span></p></div>
+        <details id="sample-box" hidden><summary>Preview of new people</summary>
+          <div class="scroll"><table><thead><tr><th>Name</th><th>Gender</th><th>Born</th><th>Died</th><th>ID</th></tr></thead><tbody id="sample"></tbody></table></div>
+          <p id="more" style="font-size:13px;margin-top:6px"></p>
+        </details>
+        <details id="warn-box" hidden><summary id="warn-sum"></summary><ul id="warn"></ul></details>
+        <button class="btn go" id="go" disabled>Import</button>
+        <p id="nothing" hidden style="margin-top:10px">There is nothing new to add. Everything in this file is already in your tree.</p>
+      </div>
+    </div>
+  </div>
+</main>
+<script>
+const $=s=>document.querySelector(s);
+const esc=t=>String(t==null?'':t).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let file=null, token=0, timer=null;
+
+function showError(m){const e=$('#error'); e.textContent=m; e.hidden=!m; if(m) e.scrollIntoView({block:'nearest'});}
+function qs(){const p=($('#prefix').value.replace(/[^A-Za-z0-9_-]/g,'')||'G').slice(0,6);
+  return `prefix=${encodeURIComponent(p)}&birth_only=${$('#birth').checked?1:0}&qualifiers=${$('#qual').checked?1:0}`;}
+async function post(kind){
+  const r=await fetch(`/api/import/${kind}?${qs()}`,{method:'POST',headers:{'Content-Type':'application/octet-stream'},body:file});
+  if(r.status===401){location.replace('/login'); throw new Error('Signing in…');}
+  let j={}; try{j=await r.json();}catch(_){}
+  if(!r.ok) throw new Error(j.error||('Something went wrong ('+r.status+')'));
+  return j;
+}
+function setFile(f){
+  showError(''); file=f||null;
+  $('#drop-title').textContent=file?file.name:'Tap or drop your .ged file here';
+  $('#drop-sub').textContent=file?(file.size>1048576?(file.size/1048576).toFixed(1)+' MB':Math.max(1,Math.round(file.size/1024))+' KB')+' · tap to choose a different file':'Up to about 12 MB';
+  if(file&&file.size>12*1024*1024){showError('That file is larger than 12 MB. Export a smaller part of the tree.'); file=null; $('#review').hidden=true; return;}
+  file?preview():($('#review').hidden=true);
+}
+function preview(){
+  clearTimeout(timer); timer=setTimeout(async()=>{
+    if(!file) return; const my=++token;
+    $('#review').hidden=false; $('#busy').hidden=false; $('#result').hidden=true; showError('');
+    try{ const j=await post('preview'); if(my!==token) return; render(j); }
+    catch(e){ if(my!==token) return; $('#review').hidden=true; showError(e.message); }
+    finally{ if(my===token) $('#busy').hidden=true; }
+  },250);
+}
+function render(j){
+  const c=j.counts, tiles=[['New people',c.new_people],['Already in tree',c.matched],['New marriages',c.new_marriages],['New parent links',c.new_parent_links]];
+  $('#tiles').innerHTML=tiles.map(([l,n])=>`<div class="tile${n?'':' zero'}"><b>${n}</b><span>${l}</span></div>`).join('');
+  $('#matched-box').hidden=!j.matched.length;
+  $('#matched').innerHTML=j.matched.map(m=>esc(m.name)).join(', ')+(c.matched>j.matched.length?` and ${c.matched-j.matched.length} more`:'');
+  $('#sample-box').hidden=!j.sample.length;
+  $('#sample').innerHTML=j.sample.map(p=>`<tr><td>${esc(p.name)}</td><td>${esc(p.gender)}</td><td>${esc(p.birth)}</td><td>${esc(p.death)}</td><td>${esc(p.id)}</td></tr>`).join('');
+  $('#more').textContent=c.new_people>j.sample.length?`…and ${c.new_people-j.sample.length} more.`:'';
+  const wc=j.warning_count||0; $('#warn-box').hidden=!wc;
+  $('#warn-sum').textContent=`${wc} thing${wc===1?'':'s'} will be skipped or need a look`;
+  $('#warn').innerHTML=j.warnings.map(w=>`<li>${esc(w)}</li>`).join('')+(wc>j.warnings.length?`<li>…and ${wc-j.warnings.length} more</li>`:'');
+  const add=c.new_people+c.new_marriages+c.new_parent_links;
+  $('#go').disabled=!add; $('#nothing').hidden=!!add;
+  $('#go').textContent=add?`Import ${c.new_people} ${c.new_people===1?'person':'people'}, ${c.new_marriages} marriage${c.new_marriages===1?'':'s'}, ${c.new_parent_links} parent link${c.new_parent_links===1?'':'s'}`:'Nothing to import';
+  $('#result').hidden=false;
+}
+$('#go').onclick=async()=>{
+  if(!file) return; const b=$('#go'); b.disabled=true; const old=b.textContent; b.innerHTML='<span class="spin"></span>Importing…';
+  showError('');
+  try{
+    const j=await post('commit'), c=j.counts;
+    $('#done-text').textContent=`Added ${c.new_people} ${c.new_people===1?'person':'people'}, ${c.new_marriages} marriage${c.new_marriages===1?'':'s'} and ${c.new_parent_links} parent link${c.new_parent_links===1?'':'s'}`+(c.matched?`. ${c.matched} ${c.matched===1?'person was':'people were'} already in your tree and ${c.matched===1?'was':'were'} reused.`:'.');
+    $('#done-warn').hidden=!j.warnings.length; $('#done-warn-list').innerHTML=j.warnings.map(w=>`<li>${esc(w)}</li>`).join('');
+    $('#done').hidden=false; $('#steps').hidden=true; scrollTo(0,0);
+  }catch(e){ showError(e.message); b.disabled=false; b.textContent=old; }
+};
+$('#again').onclick=()=>{ $('#done').hidden=true; $('#steps').hidden=false; $('#file').value=''; setFile(null); };
+$('#file').onchange=e=>setFile(e.target.files[0]);
+['prefix','birth','qual'].forEach(id=>$('#'+id).addEventListener('input',()=>{ $('#prefix-eg').textContent=($('#prefix').value.replace(/[^A-Za-z0-9_-]/g,'')||'G').slice(0,6)+'123'; preview(); }));
+const drop=$('#drop');
+['dragenter','dragover'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault(); drop.classList.add('over');}));
+['dragleave','drop'].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault(); drop.classList.remove('over');}));
+drop.addEventListener('drop',e=>{ const f=e.dataTransfer.files[0]; if(f) setFile(f); });
+</script>
+</body>
+</html>

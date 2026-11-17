@@ -203,3 +203,19 @@ access), or in `<family file>.photonotes.json` when you use the text file. Delet
 its note; if you delete a person from the tree they simply stop appearing as a tag.
 
 Tests: `python test_photo_notes.py`
+
+## Import from Geni
+
+Click **Import** in the top bar (or open `/import`). Export your tree from Geni as a GEDCOM (`.ged`) file, choose it on
+that page, and review the preview: new people, people already in your tree, new marriages and parent links, and anything
+that will be skipped. Nothing is written until you press the Import button. It works with the Google Sheet and the text file.
+
+- People already in the tree (same id from an earlier import, or the same name **and** birth date) are reused, and new
+  relatives are attached to them. Importing the same file twice adds nothing the second time.
+- New people get ids like `G123` (change the prefix on the page). A clashing id gets a `_2` suffix.
+- Links that would give someone a third parent, create a loop, or marry a direct ancestor are skipped and listed.
+- Geni dates such as `ABT 1952` become `1952` (tick "Keep about / before / after" to keep `c.1952`).
+- Imports are additive. To undo one, delete the imported people (their ids share the prefix) or restore the Sheet from
+  File > Version history.
+
+Command line (text file): `python geni_import.py export.ged -o family.txt --merge`. Tests: `python test_geni_import.py`

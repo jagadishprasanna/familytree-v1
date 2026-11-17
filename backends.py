@@ -149,6 +149,15 @@ class TextBackend:
         with self.path.open("a", encoding="utf-8") as fh:
             fh.write(prefix + line + "\n")
 
+    def add_many(self, kind: str, rows: list[list[str]]) -> None:
+        """Append many records in one write."""
+        if not rows:
+            return
+        text = self.path.read_text(encoding="utf-8")
+        prefix = "" if (not text or text.endswith("\n")) else "\n"
+        with self.path.open("a", encoding="utf-8") as fh:
+            fh.write(prefix + "".join(f"{kind} | " + " | ".join(pad(r, kind)) + "\n" for r in rows))
+
     def add_person(self, f: list[str]) -> None:
         self._append("PERSON | " + " | ".join(pad(f, "PERSON")))
 
@@ -325,6 +334,12 @@ class SheetBackend:
     def _append(self, kind: str, f: list[str]) -> None:
         self._call(lambda: self._ws[kind].append_row(
             pad(f, kind), value_input_option="RAW", table_range="A1"))
+
+    def add_many(self, kind: str, rows: list[list[str]]) -> None:
+        """Append many rows with one API call per 500 rows (a loop of append_row would hit Google's rate limit)."""
+        for i in range(0, len(rows), 500):
+            chunk = [pad(r, kind) for r in rows[i:i + 500]]
+            self._call(lambda c=chunk: self._ws[kind].append_rows(c, value_input_option="RAW", table_range="A1"))
 
     def add_person(self, f): self._append("PERSON", f)
     def add_marriage(self, f): self._append("MARRIED", f)

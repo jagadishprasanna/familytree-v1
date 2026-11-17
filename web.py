@@ -32,6 +32,7 @@ from urllib.parse import parse_qs, urlparse
 
 from chat_agent import ChatAgent, ChatError
 from drive_photos import DriveError, DrivePhotos, parse_folder_id
+from geni_import import apply_plan, import_gedcom, plan_import
 from photo_notes import MAX_PEOPLE, clean_desc, open_notes
 from family_store import FamilyError, FamilyStore, open_store, to_dict
 
@@ -43,6 +44,27 @@ CAPSULE: dict = {"client": None, "tried": False}   # Time Capsule: photos from a
 CHAT: dict = {"agent": None, "tried": False}       # the "Ask" tab: a tool-using assistant over the family data
 CHAT_HITS: dict[str, list[float]] = {}                # user -> times of recent questions
 CHAT_LOCK = threading.Lock()
+
+
+def run_import(raw: bytes, q: dict, commit: bool) -> dict:
+    """Preview (writes nothing) or commit a Geni GEDCOM export into the family tree."""
+    if raw[:4] == b"PK\x03\x04":
+        raise ValueError("That is a zip file. Unzip it and choose the .ged file inside.")
+    prefix = re.sub(r"[^A-Za-z0-9_-]", "", q.get("prefix", ""))[:6] or "G"
+    res = import_gedcom(raw, prefix=prefix, birth_only=q.get("birth_only") == "1",
+                        keep_qualifiers=q.get("qualifiers") == "1")
+    if not res.people:
+        raise ValueError("No people found. Is this a GEDCOM (.ged) file exported from Geni?")
+    with store._lock:                        # plan and write against the same snapshot of the tree
+        plan = plan_import(res, store)
+        if commit:
+            counts = apply_plan(plan, store)
+            print(f"Geni import by {store.describe()}: {counts}", flush=True)
+            return {"done": True, "counts": counts, "warnings": plan.warnings[:50]}
+    row = lambda p: {"id": p.id, "name": p.name, "gender": p.gender, "birth": p.birth, "death": p.death}
+    return {"done": False, "counts": plan.counts(), "warnings": plan.warnings[:50], "warning_count": len(plan.warnings),
+            "sample": [row(p) for p in plan.people[:15]],
+            "matched": [{"name": n, "id": i} for n, i in plan.matched[:10]]}
 
 
 NOTES: dict = {"for": None, "obj": None}              # photo descriptions + tagged people, kept beside the family data
@@ -302,6 +324,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self._redirect("/login")
             if u.path in ("/", "/index.html"):
                 return self._page("index.html")
+            if u.path in ("/import", "/import.html"):
+                return self._page("import.html")
             if u.path == "/api/status":
                 kind = "google-sheet" if store.backend.__class__.__name__ == "SheetBackend" else "text-file"
                 return self._json({"source": kind, "location": store.describe(),
@@ -377,6 +401,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self._error("not logged in", 401)
             if m := re.fullmatch(r"/api/photo/([^/]+)", path):          # body = raw image bytes
                 return self._json(to_dict(store.set_photo(m.group(1), raw)), 201)
+            if path in ("/api/import/preview", "/api/import/commit"):    # body = the Geni .ged file
+                return self._json(run_import(raw, {k: v[0] for k, v in parse_qs(urlparse(self.path).query).items()},
+                                             commit=path.endswith("commit")))
             if path == "/api/capsule/photo":                              # body = raw image bytes
                 cap = self._capsule_for_writing()
                 qs = {k: v[0] for k, v in parse_qs(urlparse(self.path).query).items()}

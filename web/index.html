@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Family Tree</title>
+<title>Family Tree - Bridging generations</title>
 <style>
   :root{--bg:#f3f0e8;--ink:#22302a;--muted:#6c7a72;--green:#2e6a4e;--green2:#245640;
         --m:#5a8fbf;--f:#c97a8f;--o:#8f9a94;--line:#9fb0a6;--card:#fff;--sel:#f2b134}
@@ -19,6 +19,8 @@
   .seg button{border-radius:0;background:#3f8062;color:#fff}
   .seg button.on{background:#fff;color:var(--green2);font-weight:600}
   .grow{flex:1}
+  .hlink{display:inline-flex;align-items:center;height:34px;padding:0 10px;border-radius:6px;background:rgba(255,255,255,.18);color:#fff;text-decoration:none;font-size:14px;white-space:nowrap}
+  .hlink:hover{background:rgba(255,255,255,.3)}
   .treectl{} body.cap .treectl,body.ask .treectl{display:none!important} body.cap main,body.ask main{display:none} body:not(.cap) #capsule{display:none} body:not(.ask) #chat{display:none}
   #capsule{flex:1;min-height:0;display:flex;flex-direction:column;background:#17201b;color:#fff}
   #cap-actions{flex:none;display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:8px 12px;background:#101713;border-bottom:1px solid #26332b}
@@ -41,6 +43,7 @@
   .cap-nav:hover{background:rgba(0,0,0,.65)} .cap-nav.prev{left:12px} .cap-nav.next{right:12px}
   .cap-bar{position:absolute;left:0;right:0;bottom:0;display:flex;justify-content:space-between;align-items:flex-end;gap:12px;
     padding:36px 18px 14px;background:linear-gradient(transparent,rgba(0,0,0,.72))}
+  @media(max-width:1499px){header h1 .tag{display:none}}
   .cap-info{min-width:0;flex:1} #cap-about{font-size:14px;line-height:1.45;color:#e6ece8;margin-top:4px;max-width:640px;max-height:5.8em;overflow:auto} #cap-about:empty,#cap-people:empty{display:none}
   #cap-people{margin-top:6px} #cap-people button{background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.3);color:#fff;min-height:28px;padding:2px 10px} #cap-people button:hover{background:rgba(255,255,255,.26)}
   .cap-box textarea{width:100%;padding:9px 10px;border:1px solid #cfd8d3;border-radius:6px;font:inherit;font-size:16px;resize:vertical}
@@ -124,9 +127,9 @@
   @media(hover:none),(max-width:800px){button,select,summary{min-height:38px} .btn{padding:9px 14px}}
   @media(max-width:800px){
     header{flex-wrap:wrap;gap:8px;padding:8px 10px;padding-top:calc(8px + env(safe-area-inset-top))}
-    header h1{order:1} header h1 .brand{display:none} #tabs{order:2} .grow{order:3} #logout{order:4}
+    header h1{order:1} header h1 .brand{display:none} #tabs{order:2} .grow{order:3} #imp{order:4} #logout{order:4}
     #search{order:5;flex:1 1 100%;width:100%} header .hide-sm{display:none}
-    header input,header select,header button{height:38px;font-size:16px}
+    header input,header select,header button{height:38px;font-size:16px} .hlink{height:38px}
     #tabs button{font-size:14px;padding:0 12px}
     .ctl{display:flex;position:fixed;z-index:5;left:50%;transform:translateX(-50%);bottom:calc(12px + env(safe-area-inset-bottom));
       gap:8px;padding:6px;border-radius:12px;background:rgba(36,86,64,.94);box-shadow:0 4px 16px rgba(0,0,0,.3)}
@@ -151,7 +154,7 @@
 </head>
 <body>
 <header>
-  <h1><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><path d="M12 21V9M12 13c-4 0-6-2-6-6 4 0 6 2 6 6zM12 15c3 0 5-2 5-5-3 0-5 2-5 5z"/></svg><span class="brand">Family Tree</span></h1>
+  <h1><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><path d="M12 21V9M12 13c-4 0-6-2-6-6 4 0 6 2 6 6zM12 15c3 0 5-2 5-5-3 0-5 2-5 5z"/></svg><span class="brand">Family Tree<span class="tag"> - Bridging generations</span></span></h1>
   <div class="seg" id="tabs"><button id="t-tree" class="on"><span class="m-hide">Family </span>Tree</button><button id="t-cap"><span class="m-hide">Time </span>Capsule</button><button id="t-ask">Ask</button></div>
   <input id="search" class="treectl" list="plist" placeholder="Search a person…" autocomplete="off">
   <div class="ctl treectl">
@@ -164,6 +167,7 @@
   </div>
   <div class="grow"></div>
   <span class="hide-sm treectl" id="focusname"></span>
+  <a id="imp" class="hlink" href="/import" title="Import people from Geni">Import</a>
   <button id="logout" style="display:none">Sign out</button>
 </header>
 <main>
